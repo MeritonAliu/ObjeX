@@ -60,7 +60,8 @@ builder.Services.AddDbContext<ObjeXDbContext>(options =>
 });
 
 builder.Services.AddRazorComponents()
-    .AddInteractiveServerComponents();
+    .AddInteractiveServerComponents()
+    .AddHubOptions(o => o.MaximumReceiveMessageSize = 500 * 1024 * 1024);
 builder.Services.AddRadzenComponents();
 
 builder.Services.AddCors(options =>

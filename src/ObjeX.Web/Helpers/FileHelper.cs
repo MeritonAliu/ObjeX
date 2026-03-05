@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+
 namespace ObjeX.Web.Helpers;
 
 public static class FileHelper
@@ -8,5 +10,12 @@ public static class FileHelper
         if (bytes < 1024 * 1024) return $"{bytes / 1024.0:F1} KB";
         if (bytes < 1024 * 1024 * 1024) return $"{bytes / (1024.0 * 1024):F1} MB";
         return $"{bytes / (1024.0 * 1024 * 1024):F2} GB";
+    }
+
+    public static async Task<string> ComputeETagAsync(Stream stream)
+    {
+        using var md5 = MD5.Create();
+        var hash = await md5.ComputeHashAsync(stream);
+        return Convert.ToHexString(hash).ToLower();
     }
 }

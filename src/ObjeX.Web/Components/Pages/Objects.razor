@@ -1,0 +1,129 @@
+@page "/buckets/{BucketName}"
+@using ObjeX.Core.Interfaces
+@using ObjeX.Core.Models
+@using Microsoft.AspNetCore.Components.Forms
+@using ObjeX.Web.Components.Dialogs
+@inject IMetadataService MetadataService
+@inject IObjectStorageService StorageService
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+
+<PageTitle>@BucketName</PageTitle>
+
+<RadzenStack Gap="1rem">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
+            <RadzenLink Path="/buckets" Text="Buckets" />
+            <RadzenText>/ @BucketName</RadzenText>
+        </RadzenStack>
+        <RadzenButton Text="@(_uploading ? "Uploading..." : "Upload")" Icon="upload"
+                      ButtonStyle="ButtonStyle.Primary" Disabled="@_uploading"
+                      Click="@OnUploadClick" />
+    </RadzenStack>
+
+    <RadzenDataGrid Data="@_objects" TItem="BlobObject" AllowSorting="true" EmptyText="No objects in this bucket.">
+        <Columns>
+            <RadzenDataGridColumn TItem="BlobObject" Property="Key" Title="Key" />
+            <RadzenDataGridColumn TItem="BlobObject" Property="ContentType" Title="Content Type" />
+            <RadzenDataGridColumn TItem="BlobObject" Property="Size" Title="Size">
+                <Template Context="obj">@FileHelper.FormatBytes(obj.Size)</Template>
+            </RadzenDataGridColumn>
+            <RadzenDataGridColumn TItem="BlobObject" Property="CreatedAt" Title="Uploaded" FormatString="{0:yyyy-MM-dd HH:mm}" />
+            <RadzenDataGridColumn TItem="BlobObject" Title="" Width="80px" Sortable="false">
+                <Template Context="obj">
+                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
+                                  Click="@(() => OnDeleteObject(obj))" />
+                </Template>
+            </RadzenDataGridColumn>
+        </Columns>
+    </RadzenDataGrid>
+</RadzenStack>
+
+@code {
+    [Parameter] public string BucketName { get; set; } = string.Empty;
+
+    List<BlobObject> _objects = [];
+    bool _uploading;
+
+    const long MaxFileSize = 500L * 1024 * 1024;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadObjects();
+    }
+
+    async Task LoadObjects()
+    {
+        var result = await MetadataService.ListObjectsAsync(BucketName);
+        _objects = result.ToList();
+    }
+
+    async Task OnUploadClick()
+    {
+        var files = await DialogService.OpenAsync<UploadObjectDialog>("Upload Files");
+        if (files is not List<IBrowserFile> selectedFiles || selectedFiles.Count == 0) return;
+
+        _uploading = true;
+        var errors = new List<string>();
+
+        foreach (var file in selectedFiles)
+        {
+            try
+            {
+                using var ms = new MemoryStream();
+                await using var stream = file.OpenReadStream(MaxFileSize);
+                await stream.CopyToAsync(ms);
+
+                ms.Position = 0;
+                var etag = await FileHelper.ComputeETagAsync(ms);
+
+                ms.Position = 0;
+                var storagePath = await StorageService.StoreAsync(BucketName, file.Name, ms);
+
+                await MetadataService.SaveObjectAsync(new BlobObject
+                {
+                    BucketName = BucketName,
+                    Key = file.Name,
+                    Size = ms.Length,
+                    ContentType = file.ContentType,
+                    ETag = etag,
+                    StoragePath = storagePath
+                });
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"{file.Name}: {ex.Message}");
+            }
+        }
+
+        await LoadObjects();
+        _uploading = false;
+
+        if (errors.Count == 0)
+            NotificationService.Notify(NotificationSeverity.Success, "Upload complete", $"{selectedFiles.Count} file(s) uploaded");
+        else
+            foreach (var err in errors)
+                NotificationService.Notify(NotificationSeverity.Error, "Upload failed", err);
+    }
+
+    async Task OnDeleteObject(BlobObject obj)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Delete \"{obj.Key}\"?",
+            "Delete Object",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel", CloseDialogOnOverlayClick = true });
+
+        if (confirmed != true) return;
+
+        try
+        {
+            await MetadataService.DeleteObjectAsync(BucketName, obj.Key);
+            await LoadObjects();
+            NotificationService.Notify(NotificationSeverity.Success, "Object deleted", obj.Key);
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Failed to delete object", ex.Message);
+        }
+    }
+}

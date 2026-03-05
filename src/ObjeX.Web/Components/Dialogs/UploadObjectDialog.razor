@@ -1,0 +1,18 @@
+@using Microsoft.AspNetCore.Components.Forms
+@inject DialogService DialogService
+
+<RadzenStack Gap="1rem">
+    <InputFile OnChange="@OnFileSelected" multiple />
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
+        <RadzenButton Text="Upload" ButtonStyle="ButtonStyle.Primary" Click="@OnUpload" Disabled="@(_files.Count == 0)" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    List<IBrowserFile> _files = [];
+
+    void OnFileSelected(InputFileChangeEventArgs e) => _files = e.GetMultipleFiles().ToList();
+
+    void OnUpload() => DialogService.Close(_files);
+}

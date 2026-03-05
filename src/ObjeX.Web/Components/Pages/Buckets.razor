@@ -16,7 +16,11 @@
 
     <RadzenDataGrid Data="@_buckets" TItem="Bucket" AllowSorting="true" EmptyText="No buckets yet.">
         <Columns>
-            <RadzenDataGridColumn TItem="Bucket" Property="Name" Title="Name" />
+            <RadzenDataGridColumn TItem="Bucket" Property="Name" Title="Name">
+                <Template Context="bucket">
+                    <RadzenLink Path="@($"/buckets/{bucket.Name}")" Text="@bucket.Name" />
+                </Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="Bucket" Property="ObjectCount" Title="Objects" />
             <RadzenDataGridColumn TItem="Bucket" Property="TotalSize" Title="Size" Sortable="true">
                 <Template Context="bucket">@FileHelper.FormatBytes(bucket.TotalSize)</Template>
