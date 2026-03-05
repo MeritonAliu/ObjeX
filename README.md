@@ -195,18 +195,20 @@ Override via `appsettings.json` or environment variables:
 
 ## Roadmap
 
-### Next Up
+See [ROADMAP.md](./ROADMAP.md) for the full prioritized plan with timelines.
 
-- [ ] **Dockerize** — Dockerfile + docker-compose with volume mounts for `/data`
-- [ ] **Blazor UI** — bucket browser, upload widget, object viewer, storage dashboard
+- [ ] **Dockerize** — Dockerfile + docker-compose, multi-arch (amd64/arm64)
+- [ ] **Blazor UI** — MudBlazor dashboard, bucket browser, drag-drop upload with progress
+- [ ] **API Key Auth** — `X-API-Key` header middleware, key management in DB
 - [ ] **Object listing with prefix/delimiter** — virtual folder navigation
-
-### Later
-
-- [ ] **Presigned URLs** — time-limited access tokens for direct download links
-- [ ] **Multipart uploads** — InitiateMultipartUpload → UploadPart → Complete
-- [ ] **S3 compatibility layer** — AWS Signature V4, XML responses, S3-compatible routes
-- [ ] **API key auth** — `X-API-Key` header middleware
+- [ ] **S3 Compatibility** — AWS Sig V4, XML responses, aws-cli/boto3/s3cmd support
+- [ ] **Multipart Upload** — Initiate/UploadPart/Complete, 5GB+ support
+- [ ] **Presigned URLs** — HMAC-SHA256 signed download + upload links
+- [ ] **Enhanced Blazor UI** — previews, bulk ops, dark mode, analytics charts
+- [ ] **Object Tags** — key-value tags, lifecycle/retention policies
+- [ ] **User Authentication** — ASP.NET Core Identity, roles, JWT
+- [ ] **Bucket Permissions** — per-bucket ACL, per-user read/write/delete
+- [ ] **Teams & Organizations** — multi-tenant, quotas, team roles
 - [ ] **Storage backends** — swap `FileSystemStorageService` for cloud or chunked storage
 - [ ] **PostgreSQL support** — swap SQLite via same `IMetadataService` interface
 

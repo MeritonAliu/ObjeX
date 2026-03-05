@@ -152,10 +152,20 @@ dotnet ef database update  # or just run the app — auto-migrates
 
 ## Roadmap
 
-- [ ] Dockerfile + docker-compose
-- [ ] Blazor UI (bucket browser, upload, object viewer)
-- [ ] Prefix/delimiter support in `ListObjectsAsync`
-- [ ] API key auth middleware
-- [ ] Presigned URLs
-- [ ] Multipart upload
-- [ ] S3 compatibility layer (AWS Sig V4, XML responses)
+See ROADMAP.md for the full plan. Priority order:
+
+1. **Dockerize** — multi-stage Dockerfile, docker-compose, volume mounts for `/data`, multi-arch
+2. **Blazor UI (basic)** — MudBlazor, dashboard stats, bucket CRUD, file browser, drag-drop upload
+3. **API Key Auth** — `X-API-Key` middleware, `ApiKey` model in DB, expiry, key management UI
+4. **Object listing with prefix/delimiter** — prefix + delimiter params in `ListObjectsAsync`
+5. **S3 Compatibility** — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes
+6. **Multipart Upload** — Initiate/UploadPart/Complete endpoints, temp part storage, 5GB+ support
+7. **Presigned URLs** — HMAC-SHA256 signed URLs, expiry enforcement, upload + download
+8. **Enhanced Blazor UI** — previews, bulk ops, folder nav, dark mode, analytics charts
+9. **Object Tags** — key-value tags, tag-based search, lifecycle/retention policies
+10. **Advanced Search** — full-text filename, filter by type/size/date, faceted search
+11. **User Auth** — ASP.NET Core Identity, roles (Admin/User/ReadOnly), JWT for API
+12. **Bucket Permissions** — per-bucket ACL, read/write/delete, permission checks in endpoints
+13. **Teams/Orgs** — multi-tenant, org workspaces, team roles, storage quotas
+14. **Storage backends** — swap `FileSystemStorageService` for cloud or chunked storage
+15. **PostgreSQL support** — swap SQLite via same `IMetadataService` interface
