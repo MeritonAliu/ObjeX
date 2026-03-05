@@ -1,9 +1,49 @@
 @page "/"
+@using ObjeX.Core.Interfaces
+@inject IMetadataService MetadataService
 
 <PageTitle>Dashboard</PageTitle>
 
-<h1>ObjeX</h1>
+<RadzenStack Gap="1.5rem">
+    <RadzenText TextStyle="TextStyle.H4">Dashboard</RadzenText>
+
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
+        <RadzenCard Style="flex: 1">
+            <RadzenStack Gap="0.25rem">
+                <RadzenText TextStyle="TextStyle.Overline">Total Buckets</RadzenText>
+                <RadzenText TextStyle="TextStyle.H3">@_bucketCount</RadzenText>
+            </RadzenStack>
+        </RadzenCard>
+        <RadzenCard Style="flex: 1">
+            <RadzenStack Gap="0.25rem">
+                <RadzenText TextStyle="TextStyle.Overline">Total Objects</RadzenText>
+                <RadzenText TextStyle="TextStyle.H3">@_objectCount</RadzenText>
+            </RadzenStack>
+        </RadzenCard>
+        <RadzenCard Style="flex: 1">
+            <RadzenStack Gap="0.25rem">
+                <RadzenText TextStyle="TextStyle.Overline">Storage Used</RadzenText>
+                <RadzenText TextStyle="TextStyle.H3">@_storageUsed</RadzenText>
+            </RadzenStack>
+        </RadzenCard>
+    </RadzenStack>
+</RadzenStack>
 
 @code {
-    
+    int _bucketCount;
+    long _objectCount;
+    string _storageUsed = "0 B";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var buckets = (await MetadataService.ListBucketsAsync()).ToList();
+        _bucketCount = buckets.Count;
+        long totalSize = 0;
+        foreach (var b in buckets)
+        {
+            _objectCount += b.ObjectCount;
+            totalSize += b.TotalSize;
+        }
+        _storageUsed = FileHelper.FormatBytes(totalSize);
+    }
 }

@@ -18,7 +18,9 @@
         <Columns>
             <RadzenDataGridColumn TItem="Bucket" Property="Name" Title="Name" />
             <RadzenDataGridColumn TItem="Bucket" Property="ObjectCount" Title="Objects" />
-            <RadzenDataGridColumn TItem="Bucket" Property="TotalSize" Title="Size (bytes)" />
+            <RadzenDataGridColumn TItem="Bucket" Property="TotalSize" Title="Size" Sortable="true">
+                <Template Context="bucket">@FileHelper.FormatBytes(bucket.TotalSize)</Template>
+            </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="Bucket" Property="CreatedAt" Title="Created" FormatString="{0:yyyy-MM-dd HH:mm}" />
             <RadzenDataGridColumn TItem="Bucket" Title="" Width="80px" Sortable="false">
                 <Template Context="bucket">
