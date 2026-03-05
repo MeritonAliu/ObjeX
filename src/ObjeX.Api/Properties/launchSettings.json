@@ -7,6 +7,7 @@
       "launchBrowser": true,
       "launchUrl": "",
       "applicationUrl": "http://localhost:8080",
+      "workingDirectory": "../../",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

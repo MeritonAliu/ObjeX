@@ -1,0 +1,13 @@
+services:
+  objex:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - objex-data:/data
+    environment:
+      DefaultAdmin__Password: admin
+    restart: unless-stopped
+
+volumes:
+  objex-data:
