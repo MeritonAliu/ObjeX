@@ -2,7 +2,7 @@
 @inject DialogService DialogService
 
 <RadzenStack Gap="1rem">
-    <InputFile OnChange="@OnFileSelected" multiple />
+    <InputFile OnChange="@((InputFileChangeEventArgs e) => OnFileSelected(e))" multiple />
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
         <RadzenButton Text="Upload" ButtonStyle="ButtonStyle.Primary" Click="@OnUpload" Disabled="@(_files.Count == 0)" />
