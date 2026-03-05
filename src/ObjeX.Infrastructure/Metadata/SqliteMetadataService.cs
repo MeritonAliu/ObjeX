@@ -31,6 +31,11 @@ public class SqliteMetadataService(ObjeXDbContext ctx) : IMetadataService
         var bucket = await ctx.Buckets.FirstOrDefaultAsync(b => b.Name == bucketName, ctk);
         if (bucket is not null)
         {
+            // Delete all objects in the bucket first
+            var objects = await ctx.BlobObjects.Where(o => o.BucketName == bucketName).ToListAsync(ctk);
+            ctx.BlobObjects.RemoveRange(objects);
+                
+            // Then delete the bucket
             ctx.Buckets.Remove(bucket);
             await ctx.SaveChangesAsync(ctk);
         }

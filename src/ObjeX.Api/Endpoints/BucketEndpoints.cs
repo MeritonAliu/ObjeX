@@ -1,5 +1,6 @@
 using ObjeX.Core.Interfaces;
 using ObjeX.Core.Models;
+using ObjeX.Core.Validation;
 
 namespace ObjeX.Api.Endpoints;
 
@@ -17,6 +18,12 @@ public static class BucketEndpoints
         
         buckets.MapPost("/", async (string name, IMetadataService metadata) =>
         {
+            var validationError = BucketNameValidator.GetValidationError(name);
+            if (validationError is not null)
+            {
+                return Results.BadRequest(new { error = validationError });
+            }
+            
             if (await metadata.ExistsBucketAsync(name))
             {
                 return Results.Conflict(new { error = "Bucket already exists" });
