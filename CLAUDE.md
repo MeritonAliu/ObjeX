@@ -12,7 +12,8 @@ src/
 ├── ObjeX.Core/          # Domain — zero framework dependencies
 │   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHashService, IHasTimestamps
 │   ├── Models/          # Bucket, BlobObject, ApiKey, User
-│   └── Validation/      # BucketNameValidator
+│   ├── Utilities/       # HashingStream (MD5 passthrough for ETag computation during upload)
+│   └── Validation/      # BucketNameValidator (GetValidationError)
 ├── ObjeX.Infrastructure/
 │   ├── Data/            # ObjeXDbContext (EF Core + SQLite, extends IdentityDbContext<User>)
 │   ├── Hashing/         # Sha256HashService

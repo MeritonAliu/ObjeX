@@ -12,16 +12,6 @@ public static partial class BucketNameValidator
     [GeneratedRegex("^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$")]
     private static partial Regex BucketNameRegex();  // Compiler generates this at build time
 
-    public static bool IsValid(string name)
-    {
-        if (string.IsNullOrWhiteSpace(name)) return false;
-        if (name.Length < 3 || name.Length > 63) return false;
-        if (name.Contains("..")) return false;
-        if (name.StartsWith('-') || name.EndsWith('-')) return false;
-        
-        return BucketNameRegex().IsMatch(name);
-    }
-
     public static string? GetValidationError(string name)
     {
         if (string.IsNullOrWhiteSpace(name))

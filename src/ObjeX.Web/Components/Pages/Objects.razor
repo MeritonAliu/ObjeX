@@ -71,10 +71,9 @@
             try
             {
                 using var ms = new MemoryStream(file.Data);
-                var etag = await Core.Utilities.ETagHelper.ComputeAsync(ms);
-
-                ms.Position = 0;
-                var storagePath = await StorageService.StoreAsync(BucketName, file.Name, ms);
+                using var hashingStream = new Core.Utilities.HashingStream(ms);
+                var storagePath = await StorageService.StoreAsync(BucketName, file.Name, hashingStream);
+                var etag = hashingStream.GetETag();
 
                 await MetadataService.SaveObjectAsync(new BlobObject
                 {

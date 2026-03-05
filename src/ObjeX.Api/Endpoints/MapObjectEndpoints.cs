@@ -22,12 +22,12 @@ public static class ObjectEndpoints
                 return Results.NotFound(new { error = "Bucket not found" });
             }
 
-            var stream = request.Body;
             var contentType = request.ContentType ?? "application/octet-stream";
 
-            var storagePath = await storage.StoreAsync(bucketName, key, stream);
+            using var hashingStream = new HashingStream(request.Body);
+            var storagePath = await storage.StoreAsync(bucketName, key, hashingStream);
             var size = await storage.GetSizeAsync(bucketName, key);
-            var etag = await ETagHelper.ComputeAsync(stream);
+            var etag = hashingStream.GetETag();
 
             var blobObject = new BlobObject
             {
