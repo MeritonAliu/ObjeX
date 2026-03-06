@@ -81,6 +81,7 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<ObjeXDbContext>();
     db.Database.Migrate();
 }
+app.UseStatusCodePagesWithReExecute("/not-found");
 app.UseStaticFiles();
 app.UseCors();
 app.UseAntiforgery();
