@@ -63,7 +63,7 @@
 
     async Task OnUploadClick()
     {
-        var files = await DialogService.OpenAsync<UploadObjectDialog>("Upload Files");
+        var files = await DialogService.OpenAsync<UploadObjectDialog>("Upload");
         if (files is not List<IBrowserFile> selectedFiles || selectedFiles.Count == 0) return;
 
         _uploading = true;

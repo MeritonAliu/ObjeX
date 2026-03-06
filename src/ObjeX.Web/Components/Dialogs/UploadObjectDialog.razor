@@ -2,10 +2,42 @@
 @inject DialogService DialogService
 
 <RadzenStack Gap="1rem">
-    <InputFile OnChange="@((InputFileChangeEventArgs e) => OnFileSelected(e))" multiple />
+    @if (_files.Count == 0)
+    {
+        <div style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
+                    border: 2px dashed var(--rz-primary); border-radius: var(--rz-border-radius);
+                    padding: 2rem; gap:0.5rem; background: var(--rz-base-background-color)">
+            <span class="rzi rzi-upload" style="font-size:2rem; color:var(--rz-primary)"></span>
+            <RadzenText TextStyle="TextStyle.Subtitle1">Drag &amp; drop file(s) here or click to browse</RadzenText>
+            <InputFile OnChange="@((InputFileChangeEventArgs e) => OnFileSelected(e))" multiple
+                       style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%" />
+        </div>
+    }
+    else
+    {
+        <RadzenStack Gap="0.5rem">
+            @foreach (var f in _files)
+            {
+                <RadzenCard>
+                    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                        <RadzenStack Gap="0.1rem">
+                            <RadzenText TextStyle="TextStyle.Subtitle2">@f.Name</RadzenText>
+                            <RadzenText TextStyle="TextStyle.Caption">@FileHelper.FormatBytes(f.Size)</RadzenText>
+                        </RadzenStack>
+                        <span class="rzi rzi-check-circle" style="color:var(--rz-success); font-size:1.25rem"></span>
+                    </RadzenStack>
+                </RadzenCard>
+            }
+        </RadzenStack>
+
+        <RadzenButton Text="@(_files.Count == 1 ? "Choose a different file" : "Choose different files")" ButtonStyle="ButtonStyle.Light" Icon="refresh"
+                      Click="@(() => _files = [])" />
+    }
+
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
-        <RadzenButton Text="Upload" ButtonStyle="ButtonStyle.Primary" Click="@OnUpload" Disabled="@(_files.Count == 0)" />
+        <RadzenButton Text="@($"Upload {(_files.Count > 0 ? $"({_files.Count} {(_files.Count == 1 ? "file" : "files")})" : "")}")"
+                      ButtonStyle="ButtonStyle.Primary" Click="@OnUpload" Disabled="@(_files.Count == 0)" />
     </RadzenStack>
 </RadzenStack>
 
