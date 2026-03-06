@@ -17,9 +17,6 @@ public static class BucketEndpoints
 
         buckets.MapPost("/", async (string name, IMetadataService metadata) =>
         {
-            if (await metadata.ExistsBucketAsync(name))
-                return Results.Conflict(new { error = "Bucket already exists" });
-
             try
             {
                 var bucket = await metadata.CreateBucketAsync(new Bucket { Name = name });
@@ -28,6 +25,10 @@ public static class BucketEndpoints
             catch (ArgumentException ex)
             {
                 return Results.BadRequest(new { error = ex.Message });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.Conflict(new { error = ex.Message });
             }
         });
         

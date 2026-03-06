@@ -16,6 +16,9 @@ public class SqliteMetadataService(ObjeXDbContext ctx) : IMetadataService
         if (error is not null)
             throw new ArgumentException(error, nameof(bucket));
 
+        if (await ctx.Buckets.AnyAsync(b => b.Name == bucket.Name, ctk))
+            throw new InvalidOperationException($"Bucket '{bucket.Name}' already exists.");
+
         ctx.Buckets.Add(bucket);
         await ctx.SaveChangesAsync(ctk);
         return bucket;
