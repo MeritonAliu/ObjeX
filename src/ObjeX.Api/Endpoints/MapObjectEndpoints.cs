@@ -24,7 +24,7 @@ public static class ObjectEndpoints
 
             var contentType = request.ContentType ?? "application/octet-stream";
 
-            using var hashingStream = new HashingStream(request.Body);
+            await using var hashingStream = new HashingStream(request.Body);
             var storagePath = await storage.StoreAsync(bucketName, key, hashingStream);
             var size = await storage.GetSizeAsync(bucketName, key);
             var etag = hashingStream.GetETag();

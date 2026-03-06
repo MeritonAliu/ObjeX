@@ -83,7 +83,7 @@
             try
             {
                 using var ms = new MemoryStream(file.Data);
-                using var hashingStream = new Core.Utilities.HashingStream(ms);
+                await using var hashingStream = new Core.Utilities.HashingStream(ms);
                 storagePath = await StorageService.StoreAsync(BucketName, file.Name, hashingStream);
                 var etag = hashingStream.GetETag();
 
