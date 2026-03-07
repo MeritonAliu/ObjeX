@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ObjeX.Core.Interfaces;
 using ObjeX.Infrastructure.Data;
+using ObjeX.Infrastructure.Hashing;
 using ObjeX.Infrastructure.Metadata;
 using ObjeX.Infrastructure.Storage;
 using ObjeX.Web.Components;
@@ -13,11 +14,12 @@ using Serilog;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddScoped<IMetadataService, SqliteMetadataService>();
-builder.Services.AddSingleton<IObjectStorageService>(_ =>
+builder.Services.AddSingleton<IHashService, Sha256HashService>();
+builder.Services.AddSingleton<IObjectStorageService>(sp =>
 {
     var basePath = builder.Configuration["Storage:BasePath"]
                    ?? Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "blobs");
-    return new FileSystemStorageService(basePath);
+    return new FileSystemStorageService(basePath, sp.GetRequiredService<IHashService>());
 });
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
