@@ -6,7 +6,7 @@ services:
     volumes:
       - objex-data:/data
     environment:
-      DefaultAdmin__Password: admin
+      DefaultAdmin__Password: changeme
     restart: unless-stopped
 
 volumes:

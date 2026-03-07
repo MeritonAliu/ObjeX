@@ -243,6 +243,34 @@ app.MapObjectEndpoints().RequireAuthorization("ApiPolicy");
 app.MapApiKeyEndpoints().RequireAuthorization("ApiPolicy");
 app.MapIdentityApi<User>();
 
-app.MapAccountEndpoints();
+// Auth endpoints — real HTTP requests so cookies can be set/cleared
+app.MapPost("/account/login", async (HttpContext ctx, SignInManager<User> signInManager) =>
+{
+    var form = await ctx.Request.ReadFormAsync();
+    var login = form["login"].ToString();
+    var password = form["password"].ToString();
+    var returnUrl = form["returnUrl"].ToString();
+
+    var user = login.Contains('@')
+        ? await signInManager.UserManager.FindByEmailAsync(login)
+        : await signInManager.UserManager.FindByNameAsync(login);
+
+    if (user is not null)
+    {
+        var result = await signInManager.PasswordSignInAsync(user, password, isPersistent: true, lockoutOnFailure: false);
+        if (result.Succeeded)
+            return Results.Redirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
+    }
+
+    var qs = $"error=1&login={Uri.EscapeDataString(login)}";
+    if (!string.IsNullOrEmpty(returnUrl)) qs += $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+    return Results.Redirect($"/login?{qs}");
+}).DisableAntiforgery();
+
+app.MapGet("/account/logout", async (SignInManager<User> signInManager) =>
+{
+    await signInManager.SignOutAsync();
+    return Results.Redirect("/login");
+});
 
 app.Run();

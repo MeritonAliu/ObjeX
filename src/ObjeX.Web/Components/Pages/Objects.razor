@@ -16,7 +16,7 @@
             <RadzenText>/ @BucketName</RadzenText>
         </RadzenStack>
         <RadzenButton Text="@(_uploading ? "Uploading..." : "Upload")" Icon="upload"
-                      ButtonStyle="ButtonStyle.Primary" Disabled="@(_uploading || !_bucketExists)"
+                      ButtonStyle="ButtonStyle.Primary" Disabled="@_uploading"
                       Click="@OnUploadClick" />
     </RadzenStack>
 
@@ -46,15 +46,10 @@
 
     List<BlobObject> _objects = [];
     bool _uploading;
-    bool _bucketExists = true;
 
     protected override async Task OnInitializedAsync()
     {
-        _bucketExists = await MetadataService.ExistsBucketAsync(BucketName);
-        if (_bucketExists)
-            await LoadObjects();
-        else
-            NotificationService.Notify(NotificationSeverity.Error, "Bucket not found", $"\"{BucketName}\" does not exist.");
+        await LoadObjects();
     }
 
     async Task LoadObjects()
@@ -65,12 +60,6 @@
 
     async Task OnUploadClick()
     {
-        if (!await MetadataService.ExistsBucketAsync(BucketName))
-        {
-            NotificationService.Notify(NotificationSeverity.Error, "Bucket not found", $"\"{BucketName}\" no longer exists.");
-            return;
-        }
-
         var result = await DialogService.OpenAsync<UploadObjectDialog>("Upload");
         if (result is not List<UploadObjectDialog.UploadFile> selectedFiles || selectedFiles.Count == 0) return;
 
@@ -79,12 +68,11 @@
 
         foreach (var file in selectedFiles)
         {
-            string? storagePath = null;
             try
             {
                 using var ms = new MemoryStream(file.Data);
-                await using var hashingStream = new Core.Utilities.HashingStream(ms);
-                storagePath = await StorageService.StoreAsync(BucketName, file.Name, hashingStream);
+                using var hashingStream = new Core.Utilities.HashingStream(ms);
+                var storagePath = await StorageService.StoreAsync(BucketName, file.Name, hashingStream);
                 var etag = hashingStream.GetETag();
 
                 await MetadataService.SaveObjectAsync(new BlobObject
@@ -99,8 +87,6 @@
             }
             catch (Exception ex)
             {
-                if (storagePath is not null)
-                    await StorageService.DeleteAsync(BucketName, file.Name);
                 errors.Add($"{file.Name}: {ex.Message}");
             }
         }
