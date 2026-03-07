@@ -2,6 +2,28 @@
 
 ---
 
+## Completed
+
+### Content-Addressable Blob Storage ✅
+- `IHashService` interface in `ObjeX.Core` (BCL only, no NuGet)
+- `Sha256HashService` in `ObjeX.Infrastructure/Hashing/` — SHA256 of `"{bucket}/{key}"`, 64-char lowercase hex
+- `FileSystemStorageService` stores blobs at `{basePath}/{bucket}/{L1}/{L2}/{hash}.blob`
+  - L1/L2 = first 4 hex chars → 65,536 directories, even distribution
+  - Logical key (virtual path) lives in DB only — no filesystem folders for virtual paths
+- `CleanupOrphanedBlobsAsync(IReadOnlySet<string>)` — caller-triggered GC, no scheduling
+- `IHashService` registered as singleton in `Program.cs`
+
+### Blazor UI — Basic ✅
+- Radzen Blazor component library (replaced MudBlazor)
+- Dashboard: total buckets, object count, storage used (10s auto-refresh)
+- Bucket management: create (with validation), list, delete
+- File browser: list objects, virtual key paths displayed
+- Drag-and-drop / file-picker upload dialog with multi-file support
+- Download (native `<a download>` → API) and delete per object
+- Toast notifications bottom-right
+
+---
+
 ## Phase 1 — Infrastructure & Core UX
 
 ### 1. Dockerization (~2 days)
@@ -11,14 +33,6 @@
 - `docker-compose.yml` for local self-hosting
 - Multi-arch builds: amd64 + arm64 (GitHub Actions)
 - Docker Hub publishing
-
-### 2. Blazor UI — Basic (~1 week)
-- MudBlazor component library
-- Dashboard: total storage, object count, bucket list
-- Bucket management: create, list, delete
-- File browser: navigate bucket contents, virtual folder view
-- Drag-and-drop upload with progress bars
-- Download and delete actions per object
 
 ### 3. API Key Authentication (~2 days)
 - `X-API-Key` header middleware

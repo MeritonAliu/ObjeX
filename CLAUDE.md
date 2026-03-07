@@ -10,11 +10,12 @@ Self-hosted blob storage built with Clean Architecture in .NET 10.
 src/
 ├── ObjeX.Api/           # ASP.NET Core host — Program.cs, Endpoints/
 ├── ObjeX.Core/          # Domain — zero framework dependencies
-│   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHasTimestamps
+│   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHashService, IHasTimestamps
 │   ├── Models/          # Bucket, BlobObject
 │   └── Validation/      # BucketNameValidator
 ├── ObjeX.Infrastructure/
 │   ├── Data/            # ObjeXDbContext (EF Core + SQLite)
+│   ├── Hashing/         # Sha256HashService
 │   ├── Metadata/        # SqliteMetadataService
 │   ├── Migrations/      # EF Core migrations
 │   └── Storage/         # FileSystemStorageService
@@ -63,6 +64,13 @@ public interface IMetadataService
     Task<bool> ExistsObjectAsync(string bucketName, string key, CancellationToken ctk = default);
     Task UpdateBucketStatsAsync(string bucketName, CancellationToken ctk = default);
 }
+
+// ObjeX.Core/Interfaces/IHashService.cs
+// Responsibility: compute deterministic hashes for storage path derivation
+public interface IHashService
+{
+    string ComputeHash(string input); // returns 64-char lowercase hex string
+}
 ```
 
 ---
@@ -90,7 +98,6 @@ public interface IMetadataService
 
 ## Storage Paths
 
-- **Blobs**: `{Storage:BasePath}/{bucketName}/{sanitized-key}` — directories created on demand
 - **Database**: `{solution-root}/objex.db` by default, or `ConnectionStrings:DefaultConnection` in config
 - **Default blob path**: two levels up from `ContentRootPath` + `/data/blobs` (i.e. solution root)
 
@@ -99,6 +106,34 @@ The DB path logic in `Program.cs`:
 var solutionRoot = currentDir.Parent?.Parent?.FullName; // src/ObjeX.Api → src → solution root
 var dbPath = Path.Combine(solutionRoot, "objex.db");
 ```
+
+### Content-Addressable Blob Layout
+
+Physical blob paths are **derived from a SHA256 hash of `"{bucketName}/{key}"`**, not from the key string itself. This is done by `IHashService` → `Sha256HashService`.
+
+```
+{basePath}/{bucketName}/{L1}/{L2}/{hash}.blob
+
+L1 = hash[0..1]   (first 2 hex chars)
+L2 = hash[2..3]   (next  2 hex chars)
+
+Example:
+  bucket = "photos", key = "2024/trip.jpg"
+  hash   = sha256("photos/2024/trip.jpg") = "a3f7c2..."
+  path   = /data/blobs/photos/a3/f7/a3f7c2....blob
+```
+
+**Why hashed paths:**
+- Eliminates path traversal risk — the logical key never touches the filesystem raw
+- Distributes files evenly across 256×256 = 65,536 directories — no hot directories
+- Renaming or moving a logical key (future) doesn't require copying bytes, just updating `StoragePath` in the DB
+- Decouples the public key namespace from the physical layout entirely
+
+**Virtual folder paths** (e.g. `images/2024/photo.jpg`) live only in the database (`BlobObject.Key`). There are no corresponding subdirectories on disk for virtual folders.
+
+**`CleanupOrphanedBlobsAsync(IReadOnlySet<string> knownStoragePaths)`** — call this on `FileSystemStorageService` to scan `*.blob` files and delete any not present in the known set. Use after bulk deletes or for periodic GC. No automatic scheduling — caller decides when to run it.
+
+**Future:** content-based deduplication (hash file bytes, not key) is tracked in a TODO comment in `FileSystemStorageService`. Not implemented — would require ref-counting in metadata.
 
 ---
 
@@ -193,7 +228,7 @@ dotnet ef database update  # or just run the app — auto-migrates
 See ROADMAP.md for the full plan. Priority order:
 
 1. **Dockerize** — multi-stage Dockerfile, docker-compose, volume mounts for `/data`, multi-arch
-2. **Blazor UI (basic)** — MudBlazor, dashboard stats, bucket CRUD, file browser, drag-drop upload
+2. **Blazor UI (basic)** — Radzen, dashboard stats, bucket CRUD, file browser, drag-drop upload ✅ in progress
 3. **API Key Auth** — `X-API-Key` middleware, `ApiKey` model in DB, expiry, key management UI
 4. **Object listing with prefix/delimiter** — prefix + delimiter params in `ListObjectsAsync`
 5. **S3 Compatibility** — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes

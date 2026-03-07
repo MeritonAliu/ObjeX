@@ -136,7 +136,7 @@ Upload response:
 | UI          | Blazor Server (Interactive SSR)         |
 | API Docs    | Scalar + OpenAPI                        |
 | Database    | SQLite via EF Core 10 (snake_case cols) |
-| Blob store  | Filesystem (`FileSystemStorageService`) |
+| Blob store  | Filesystem, content-addressable SHA256 paths (`FileSystemStorageService`) |
 | Logging     | Serilog (console)                       |
 | Compression | Response compression (HTTPS-enabled)    |
 
@@ -167,13 +167,19 @@ Override via `appsettings.json` or environment variables:
 
 ### File Layout on Disk
 
+Blobs are stored with **content-addressable hashed paths** — the physical filename is a SHA256 hash of `"{bucketName}/{key}"`, spread across a 2-level directory tree:
+
 ```
 /data/
 ├── blobs/
 │   └── {bucket}/
-│       └── {object-key}    # stored as-is under bucket directory
+│       └── {L1}/           # first 2 chars of SHA256 hash
+│           └── {L2}/       # next 2 chars of SHA256 hash
+│               └── {hash}.blob
 └── objex.db                # SQLite — buckets + object metadata
 ```
+
+The logical key (e.g. `images/2024/photo.jpg`) is stored in the database only — virtual folder paths have no filesystem representation.
 
 ---
 
@@ -184,12 +190,13 @@ Override via `appsettings.json` or environment variables:
 - [x] Object upload (streaming), download, delete, list
 - [x] ETag computation (MD5) on upload
 - [x] SQLite metadata store via EF Core (auto-migrated on startup)
-- [x] Filesystem blob store
+- [x] Content-addressable filesystem blob store (SHA256 hashed paths, 2-level directory nesting)
+- [x] Orphaned blob GC (`CleanupOrphanedBlobsAsync`)
 - [x] Scalar interactive API docs
 - [x] Health check endpoint
 - [x] Serilog structured logging
 - [x] Response compression
-- [x] Blazor Server scaffolded (UI pages not yet built)
+- [x] Blazor Server UI — dashboard, bucket browser, drag-drop upload, download, delete
 
 ---
 
@@ -197,8 +204,9 @@ Override via `appsettings.json` or environment variables:
 
 See [ROADMAP.md](./ROADMAP.md) for the full prioritized plan with timelines.
 
+- [x] **Content-addressable storage** — SHA256 hashed blob paths, 2-level directory nesting, orphaned blob GC
+- [x] **Blazor UI** — Radzen dashboard, bucket browser, drag-drop upload, download, delete
 - [ ] **Dockerize** — Dockerfile + docker-compose, multi-arch (amd64/arm64)
-- [ ] **Blazor UI** — MudBlazor dashboard, bucket browser, drag-drop upload with progress
 - [ ] **API Key Auth** — `X-API-Key` header middleware, key management in DB
 - [ ] **Object listing with prefix/delimiter** — virtual folder navigation
 - [ ] **S3 Compatibility** — AWS Sig V4, XML responses, aws-cli/boto3/s3cmd support
