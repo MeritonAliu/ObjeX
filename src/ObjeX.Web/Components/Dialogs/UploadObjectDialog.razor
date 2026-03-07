@@ -2,18 +2,17 @@
 @inject DialogService DialogService
 
 <RadzenStack Gap="1rem">
-    @if (_files.Count == 0)
-    {
-        <div style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
-                    border: 2px dashed var(--rz-primary); border-radius: var(--rz-border-radius);
-                    padding: 2rem; gap:0.5rem; background: var(--rz-base-background-color)">
-            <span class="rzi rzi-upload" style="font-size:2rem; color:var(--rz-primary)"></span>
-            <RadzenText TextStyle="TextStyle.Subtitle1">Drag &amp; drop file(s) here or click to browse</RadzenText>
-            <InputFile OnChange="@((InputFileChangeEventArgs e) => OnFileSelected(e))" multiple
-                       style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%" />
-        </div>
-    }
-    else
+    <div style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
+                border: 2px dashed var(--rz-primary); border-radius: var(--rz-border-radius);
+                padding: 2rem; gap:0.5rem; background: var(--rz-base-background-color);
+                @(_files.Count > 0 ? "display:none" : "")">
+        <span class="rzi rzi-upload" style="font-size:2rem; color:var(--rz-primary)"></span>
+        <RadzenText TextStyle="TextStyle.Subtitle1">Drag &amp; drop file(s) here or click to browse</RadzenText>
+        <InputFile OnChange="@((InputFileChangeEventArgs e) => _files = e.GetMultipleFiles().ToList())" multiple
+                   style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%" />
+    </div>
+
+    @if (_files.Count > 0 && !_reading)
     {
         <RadzenStack Gap="0.5rem">
             @foreach (var f in _files)
@@ -29,22 +28,48 @@
                 </RadzenCard>
             }
         </RadzenStack>
+        <RadzenButton Text="@(_files.Count == 1 ? "Choose a different file" : "Choose different files")"
+                      ButtonStyle="ButtonStyle.Light" Icon="refresh" Click="@(() => _files = [])" />
+    }
 
-        <RadzenButton Text="@(_files.Count == 1 ? "Choose a different file" : "Choose different files")" ButtonStyle="ButtonStyle.Light" Icon="refresh"
-                      Click="@(() => _files = [])" />
+    @if (_reading)
+    {
+        <RadzenStack AlignItems="AlignItems.Center" Gap="0.5rem" Style="padding:1rem">
+            <RadzenProgressBarCircular ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+            <RadzenText TextStyle="TextStyle.Caption">Reading file(s)...</RadzenText>
+        </RadzenStack>
     }
 
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
         <RadzenButton Text="@($"Upload {(_files.Count > 0 ? $"({_files.Count} {(_files.Count == 1 ? "file" : "files")})" : "")}")"
-                      ButtonStyle="ButtonStyle.Primary" Click="@OnUpload" Disabled="@(_files.Count == 0)" />
+                      ButtonStyle="ButtonStyle.Primary" Click="@OnUpload"
+                      Disabled="@(_files.Count == 0 || _reading)" />
     </RadzenStack>
 </RadzenStack>
 
 @code {
+    public record UploadFile(string Name, string ContentType, long Size, byte[] Data);
+
     List<IBrowserFile> _files = [];
+    bool _reading;
 
-    void OnFileSelected(InputFileChangeEventArgs e) => _files = e.GetMultipleFiles().ToList();
+    const long MaxFileSize = 500L * 1024 * 1024;
 
-    void OnUpload() => DialogService.Close(_files);
+    async Task OnUpload()
+    {
+        _reading = true;
+        StateHasChanged();
+
+        var result = new List<UploadFile>();
+        foreach (var f in _files)
+        {
+            using var ms = new MemoryStream();
+            await using var stream = f.OpenReadStream(MaxFileSize);
+            await stream.CopyToAsync(ms);
+            result.Add(new UploadFile(f.Name, f.ContentType, f.Size, ms.ToArray()));
+        }
+
+        DialogService.Close(result);
+    }
 }

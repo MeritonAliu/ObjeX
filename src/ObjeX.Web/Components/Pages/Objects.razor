@@ -48,8 +48,6 @@
     List<BlobObject> _objects = [];
     bool _uploading;
 
-    const long MaxFileSize = 500L * 1024 * 1024;
-
     protected override async Task OnInitializedAsync()
     {
         await LoadObjects();
@@ -63,8 +61,8 @@
 
     async Task OnUploadClick()
     {
-        var files = await DialogService.OpenAsync<UploadObjectDialog>("Upload");
-        if (files is not List<IBrowserFile> selectedFiles || selectedFiles.Count == 0) return;
+        var result = await DialogService.OpenAsync<UploadObjectDialog>("Upload");
+        if (result is not List<UploadObjectDialog.UploadFile> selectedFiles || selectedFiles.Count == 0) return;
 
         _uploading = true;
         var errors = new List<string>();
@@ -73,11 +71,7 @@
         {
             try
             {
-                using var ms = new MemoryStream();
-                await using var stream = file.OpenReadStream(MaxFileSize);
-                await stream.CopyToAsync(ms);
-
-                ms.Position = 0;
+                using var ms = new MemoryStream(file.Data);
                 var etag = await FileHelper.ComputeETagAsync(ms);
 
                 ms.Position = 0;
@@ -87,7 +81,7 @@
                 {
                     BucketName = BucketName,
                     Key = file.Name,
-                    Size = ms.Length,
+                    Size = file.Size,
                     ContentType = file.ContentType,
                     ETag = etag,
                     StoragePath = storagePath
