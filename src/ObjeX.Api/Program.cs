@@ -28,7 +28,7 @@ builder.Services.AddSingleton<FileSystemStorageService>(sp =>
 {
     var basePath = builder.Configuration["Storage:BasePath"] ?? "./data/blobs";
     basePath = Path.GetFullPath(basePath);
-    return new FileSystemStorageService(basePath, sp.GetRequiredService<IHashService>(), sp.GetRequiredService<ILogger<FileSystemStorageService>>());
+    return new FileSystemStorageService(basePath, sp.GetRequiredService<IHashService>());
 });
 builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService<FileSystemStorageService>());
 builder.Services.AddControllers()

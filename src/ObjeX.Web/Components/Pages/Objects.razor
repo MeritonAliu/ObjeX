@@ -6,7 +6,6 @@
 @inject IObjectStorageService StorageService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
-@inject NavigationManager Navigation
 
 <PageTitle>@BucketName</PageTitle>
 
@@ -92,7 +91,6 @@
 
 @code {
     [Parameter] public string BucketName { get; set; } = string.Empty;
-    [SupplyParameterFromQuery(Name = "prefix")] public string? PrefixParam { get; set; }
 
     record ListRow(string Name, bool IsFolder, string? FolderPath = null, BlobObject? Object = null);
 
@@ -105,7 +103,6 @@
 
     protected override async Task OnInitializedAsync()
     {
-        _currentPrefix = PrefixParam ?? string.Empty;
         _bucketExists = await MetadataService.ExistsBucketAsync(BucketName);
         if (_bucketExists)
             await LoadObjects();
@@ -130,10 +127,6 @@
     async Task NavigateToPrefix(string prefix)
     {
         _currentPrefix = prefix;
-        var url = string.IsNullOrEmpty(prefix)
-            ? $"/buckets/{BucketName}"
-            : $"/buckets/{BucketName}?prefix={Uri.EscapeDataString(prefix)}";
-        Navigation.NavigateTo(url, replace: true);
         await LoadObjects();
     }
 
