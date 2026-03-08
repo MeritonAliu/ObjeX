@@ -21,12 +21,12 @@
 
 ### Blazor UI ✅
 - Radzen Blazor component library
-- Dashboard: total buckets, object count, storage used (10s auto-refresh)
-- Bucket management: create (with inline validation), list, delete
-- File browser: list objects, virtual key paths displayed
-- Drag-and-drop / file-picker upload dialog with multi-file support
-- Download (native `<a download>` → API) and delete per object
-- Toast notifications bottom-right
+- **Dashboard** (`/`) — total buckets, object count, storage used (10s auto-refresh)
+- **Buckets page** (`/buckets`) — list all buckets, create (with inline name validation), delete with confirmation
+- **Bucket detail / file browser** (`/buckets/{name}`) — lists all objects in a bucket, breadcrumb nav back to `/buckets`, upload button (reuses dialog), download per object (native `<a download>` → API endpoint), delete per object with confirmation
+- **Drag-and-drop upload dialog** — multi-file picker, streams files to `IObjectStorageService` directly from Blazor (no API round-trip)
+- **Settings page** (`/settings`) — API key management (create with one-time key display, list, delete)
+- Toast notifications bottom-right via Radzen `NotificationService`
 
 ### Authentication & Authorization ✅
 - **ASP.NET Core Identity** — `User` extends `IdentityUser`, `ObjeXDbContext` extends `IdentityDbContext<User>`

@@ -252,6 +252,7 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Clean Architecture (Core / Infrastructure / API / Web)
 - [x] Bucket CRUD with name validation
 - [x] Object upload (streaming), download, delete, list
+- [x] Blazor bucket detail page (`/buckets/{name}`) — file list, breadcrumb, upload dialog, per-object download + delete
 - [x] ETag computation (MD5) on upload
 - [x] SQLite metadata store via EF Core (auto-migrated on startup)
 - [x] Content-addressable filesystem blob store (SHA256 hashed paths, 2-level nesting)
@@ -277,7 +278,7 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 See [ROADMAP.md](./ROADMAP.md) for the full plan.
 
 - [x] **Content-addressable storage** — SHA256 hashed blob paths, orphaned blob GC
-- [x] **Blazor UI** — Radzen dashboard, bucket browser, drag-drop upload, download, delete
+- [x] **Blazor UI** — dashboard (`/`), bucket list (`/buckets`), bucket detail + file browser (`/buckets/{name}`), drag-drop upload, per-object download/delete, API key management (`/settings`)
 - [x] **Authentication** — Identity, cookie + API key dual auth, login/logout UI, admin seeding
 - [x] **API Key system** — `X-API-Key` middleware, key management endpoints + UI
 - [ ] **Dockerize** — Dockerfile + docker-compose, multi-arch (amd64/arm64)
