@@ -1,6 +1,6 @@
-using System.Security.Cryptography;
 using ObjeX.Core.Interfaces;
 using ObjeX.Core.Models;
+using ObjeX.Core.Utilities;
 
 namespace ObjeX.Api.Endpoints;
 
@@ -27,7 +27,7 @@ public static class ObjectEndpoints
 
             var storagePath = await storage.StoreAsync(bucketName, key, stream);
             var size = await storage.GetSizeAsync(bucketName, key);
-            var etag = await ComputeETag(stream); 
+            var etag = await ETagHelper.ComputeAsync(stream);
 
             var blobObject = new BlobObject
             {
@@ -89,18 +89,5 @@ public static class ObjectEndpoints
         });
         
         return objects;
-    }
-
-    // TODO ASAP: move to a helper class in Infrastructure or Core
-    private static async Task<string> ComputeETag(Stream stream)
-    {
-        using var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        ms.Position = 0;
-    
-        using var md5 = MD5.Create();
-        var hash = await md5.ComputeHashAsync(ms);
-    
-        return Convert.ToHexString(hash).ToLower();
     }
 }

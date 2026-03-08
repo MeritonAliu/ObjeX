@@ -1,7 +1,6 @@
 @page "/buckets/{BucketName}"
 @using ObjeX.Core.Interfaces
 @using ObjeX.Core.Models
-@using Microsoft.AspNetCore.Components.Forms
 @using ObjeX.Web.Components.Dialogs
 @inject IMetadataService MetadataService
 @inject IObjectStorageService StorageService
@@ -72,7 +71,7 @@
             try
             {
                 using var ms = new MemoryStream(file.Data);
-                var etag = await FileHelper.ComputeETagAsync(ms);
+                var etag = await Core.Utilities.ETagHelper.ComputeAsync(ms);
 
                 ms.Position = 0;
                 var storagePath = await StorageService.StoreAsync(BucketName, file.Name, ms);
