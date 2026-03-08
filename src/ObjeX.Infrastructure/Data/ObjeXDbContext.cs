@@ -9,6 +9,7 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
 {
     public DbSet<Bucket> Buckets { get; set; } = null!;
     public DbSet<BlobObject> BlobObjects { get; set; } = null!;
+    public DbSet<ApiKey> ApiKeys { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -35,6 +36,18 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
                 .WithMany(b => b.Objects)
                 .HasForeignKey(e => e.BucketName)
                 .HasPrincipalKey(b => b.Name);
+        });
+
+        modelBuilder.Entity<ApiKey>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.Key).ValueGeneratedNever();
+            entity.HasIndex(e => e.Key).IsUnique();
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

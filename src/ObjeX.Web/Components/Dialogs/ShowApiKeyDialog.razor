@@ -1,0 +1,20 @@
+@inject DialogService DialogService
+
+<RadzenStack Gap="1rem">
+    <RadzenText TextStyle="TextStyle.Body1">
+        Copy your new API key now — it won't be shown again.
+    </RadzenText>
+
+    <code style="word-break:break-all; font-size:0.875rem; display:block; padding:0.75rem;
+                 background:var(--rz-base-200); border-radius:4px; line-height:1.6">
+        @ApiKey
+    </code>
+
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End">
+        <RadzenButton Text="Done" ButtonStyle="ButtonStyle.Primary" Click="@(() => DialogService.Close(null))" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    [Parameter] public string ApiKey { get; set; } = string.Empty;
+}

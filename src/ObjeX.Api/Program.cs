@@ -13,6 +13,7 @@ using ObjeX.Infrastructure.Metadata;
 using ObjeX.Infrastructure.Storage;
 using ObjeX.Web.Components;
 using ObjeX.Api.Endpoints;
+using ObjeX.Api.Middleware;
 using ObjeX.Core.Models;
 
 using Radzen;
@@ -59,9 +60,46 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
     .AddEntityFrameworkStores<ObjeXDbContext>()
     .AddDefaultTokenProviders();
 
-builder.Services.AddAuthentication();
-builder.Services.AddAuthorization();
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultScheme = IdentityConstants.ApplicationScheme;
+    options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
+})
+.AddBearerToken(IdentityConstants.BearerScheme);
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy("ApiPolicy", policy =>
+    {
+        policy.RequireAuthenticatedUser();
+    });
+});
 builder.Services.AddSingleton<IEmailSender<User>, NoOpEmailSender>();
+
+builder.Services.ConfigureApplicationCookie(options =>
+{
+    options.Events.OnRedirectToLogin = ctx =>
+    {
+        if (ctx.Request.Path.StartsWithSegments("/api"))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+    options.Events.OnRedirectToAccessDenied = ctx =>
+    {
+        if (ctx.Request.Path.StartsWithSegments("/api"))
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        }
+        ctx.Response.Redirect(ctx.RedirectUri);
+        return Task.CompletedTask;
+    };
+});
 
 
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
@@ -157,11 +195,15 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseStatusCodePagesWithReExecute("/not-found");
+app.UseWhen(
+    ctx => !ctx.Request.Path.StartsWithSegments("/api"),
+    branch => branch.UseStatusCodePagesWithReExecute("/not-found"));
 app.UseStaticFiles();
 app.UseCors();
 app.UseAuthentication();
+app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
 app.UseAuthorization();
+
 app.UseAntiforgery();
 if (app.Environment.IsDevelopment())
 {
@@ -196,7 +238,7 @@ app.MapOpenApi();
 app.MapScalarApiReference(options =>
 {
     options.WithTitle("ObjeX API");
-});
+}).RequireAuthorization();
 app.MapHealthChecks("/health");
 
 app.MapRazorComponents<App>()
@@ -204,8 +246,9 @@ app.MapRazorComponents<App>()
 
 app.MapControllers();
 
-app.MapBucketEndpoints().RequireAuthorization();
-app.MapObjectEndpoints().RequireAuthorization();
+app.MapBucketEndpoints().RequireAuthorization("ApiPolicy");
+app.MapObjectEndpoints().RequireAuthorization("ApiPolicy");
+app.MapApiKeyEndpoints().RequireAuthorization("ApiPolicy");
 app.MapIdentityApi<User>();
 
 // Auth endpoints — real HTTP requests so cookies can be set/cleared

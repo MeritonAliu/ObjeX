@@ -8,19 +8,23 @@ Self-hosted blob storage built with Clean Architecture in .NET 10.
 
 ```
 src/
-├── ObjeX.Api/           # ASP.NET Core host — Program.cs, Endpoints/
+├── ObjeX.Api/           # ASP.NET Core host — Program.cs, Endpoints/, Middleware/, Auth/
 ├── ObjeX.Core/          # Domain — zero framework dependencies
 │   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHashService, IHasTimestamps
-│   ├── Models/          # Bucket, BlobObject
+│   ├── Models/          # Bucket, BlobObject, ApiKey, User
 │   └── Validation/      # BucketNameValidator
 ├── ObjeX.Infrastructure/
-│   ├── Data/            # ObjeXDbContext (EF Core + SQLite)
+│   ├── Data/            # ObjeXDbContext (EF Core + SQLite, extends IdentityDbContext<User>)
 │   ├── Hashing/         # Sha256HashService
 │   ├── Jobs/            # CleanupOrphanedBlobsJob (Hangfire job classes)
 │   ├── Metadata/        # SqliteMetadataService
 │   ├── Migrations/      # EF Core migrations
 │   └── Storage/         # FileSystemStorageService
 └── ObjeX.Web/           # Blazor Server UI — components, pages, dialogs
+    └── Components/
+        ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound
+        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateApiKeyDialog, ShowApiKeyDialog
+        └── Layout/      # MainLayout, NavMenu, EmptyLayout
 ```
 
 ---
@@ -30,8 +34,119 @@ src/
 - **ObjeX.Core** has zero framework/NuGet dependencies — only BCL. Keep it that way.
 - **ObjeX.Infrastructure** implements Core interfaces. Never reference Api or Web.
 - **ObjeX.Api** wires everything together via DI in `Program.cs`. No business logic here.
-- **ObjeX.Web** is for Blazor UI only. Components live here, hosted by ObjeX.Api.
+- **ObjeX.Web** references both `ObjeX.Core` and `ObjeX.Infrastructure` (for `ObjeXDbContext` injection in Blazor components).
 - New storage backends → implement `IObjectStorageService`. New metadata stores → implement `IMetadataService`. No other changes needed.
+
+---
+
+## Authentication & Authorization
+
+### Overview — Dual Auth
+
+ObjeX uses **two authentication mechanisms** operating independently:
+
+| Mechanism | Scheme name | Used by |
+|---|---|---|
+| Cookie (ASP.NET Core Identity) | `Identity.Application` | Browser / Blazor UI |
+| API Key (`X-API-Key` header) | `"ApiKey"` (custom) | External API clients, curl, SDKs |
+
+Both are supported simultaneously. The cookie is the default for the browser; API keys bypass the login flow entirely for external access.
+
+### Middleware Pipeline Order
+
+```
+UseAuthentication          ← runs Identity cookie handler, sets context.User for cookie sessions
+UseMiddleware<ApiKeyAuthenticationMiddleware>  ← if not already authed, checks X-API-Key header
+UseAuthorization           ← enforces policies on the already-resolved context.User
+```
+
+`ApiKeyAuthenticationMiddleware` (`ObjeX.Api/Middleware/`) short-circuits if `context.User.Identity.IsAuthenticated` is already true (cookie session takes precedence). Otherwise, it looks up the key in `db.ApiKeys`, validates expiry, updates `LastUsedAt`, and sets `context.User` to a `ClaimsIdentity` with scheme `"ApiKey"`.
+
+### 401 vs 302 for API Paths
+
+By default, cookie auth challenges redirect to the login page (302). For API endpoints this is wrong — external clients expect 401. Two fixes are applied:
+
+1. **`ConfigureApplicationCookie`** in `Program.cs` overrides `OnRedirectToLogin` and `OnRedirectToAccessDenied`: if `Request.Path.StartsWithSegments("/api")`, sets `StatusCode = 401` and returns without redirecting.
+
+2. **`UseStatusCodePagesWithReExecute`** is wrapped in `app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), ...)` so it only intercepts non-API responses. Without this, the 401 would be caught by the status code middleware and re-executed to `/not-found`, which then redirects to login.
+
+### Authorization Policy
+
+```csharp
+// ApiPolicy — used by all API endpoints
+options.AddPolicy("ApiPolicy", policy => policy.RequireAuthenticatedUser());
+```
+
+No `AddAuthenticationSchemes` on the policy — both auth mechanisms set `context.User` before `UseAuthorization` runs, so the policy just checks `IsAuthenticated`. Adding scheme names to the policy would cause a 500 because `"ApiKey"` has no registered ASP.NET auth handler (it's handled by our custom middleware, not the auth pipeline).
+
+### ASP.NET Core Identity Setup
+
+- `User` model in `ObjeX.Core/Models/` extends `IdentityUser`
+- `ObjeXDbContext` extends `IdentityDbContext<User>`
+- Roles: `Admin`, `User` — seeded on startup alongside default admin
+- Password requirements relaxed for MVP (min 4 chars, no complexity rules)
+- `IEmailSender<User>` is satisfied by `NoOpEmailSender` (`ObjeX.Api/Auth/`) — required by `MapIdentityApi<User>()`, email flows are no-ops
+
+**Default admin** (seeded on first run if no `admin` user exists):
+```
+Username: admin  (or DefaultAdmin:Username in config)
+Email:    admin@objex.local  (or DefaultAdmin:Email)
+Password: admin  (or DefaultAdmin:Password)
+```
+⚠️ Change this in production via `appsettings.json` or environment variables.
+
+### Login / Logout
+
+Blazor Server cannot set HTTP cookies — the SignalR response is already committed by the time component code runs. Auth actions that touch cookies are therefore handled by **real HTTP endpoints**, not Blazor components:
+
+```
+POST /account/login   ← HTML form POST; sets Identity cookie; redirects to returnUrl or /
+GET  /account/logout  ← clears Identity cookie; redirects to /login
+```
+
+The login endpoint accepts `login` (username or email — detected by `@` presence), `password`, and `returnUrl` form fields. On failure it redirects back to `/login?error=1&login={value}` so the form can pre-fill the username.
+
+`Login.razor` uses `@layout EmptyLayout` and `[AllowAnonymous]`. It renders a plain HTML `<form method="post" action="/account/login">` — not a Blazor event handler. It shows a Radzen toast notification on error (detected via `?error=1` query param in `OnAfterRenderAsync`).
+
+### Blazor Global Route Protection
+
+All pages using `MainLayout` are protected via `<AuthorizeView>` in `MainLayout.razor`. The `<Authorized>` branch renders the layout; `<NotAuthorized>` renders `<RedirectToLogin />`. `AuthorizeRouteView` alone is insufficient without per-page `[Authorize]` — `AuthorizeView` in the layout is the actual gate.
+
+`RedirectToLogin.razor` calls `Navigation.NavigateTo("/login?returnUrl=...", forceLoad: true)` — `forceLoad: true` is required to escape the SignalR context and do a real page load.
+
+`AddCascadingAuthenticationState()` is registered in DI (`Program.cs`). Do not use the `<CascadingAuthenticationState>` wrapper component — it cannot cascade to interactive children from a static SSR parent.
+
+### ApiKey Model (`ObjeX.Core/Models/ApiKey.cs`)
+
+```csharp
+public class ApiKey : IHasTimestamps {
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public string Key { get; init; } = GenerateKey(); // auto-generated, "obx_" prefix + 32 random bytes base64
+    public required string Name { get; set; }
+    public required string UserId { get; set; }
+    public User? User { get; set; }
+    public DateTime ExpiresAt { get; set; }
+    public DateTime? LastUsedAt { get; set; }
+    public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
+    public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+```
+
+`Key` uses `init` with a default expression (`= GenerateKey()`) — this auto-generates on construction, so `Key` is not a `required` field. EF Core is told `.ValueGeneratedNever()` for both `Id` and `Key`.
+
+### API Key Endpoints (`ObjeX.Api/Endpoints/ApiKeyEndpoints.cs`)
+
+```
+POST   /api/keys          → create key; returns { key, name, expiresAt } — key value shown ONCE
+GET    /api/keys          → list user's keys; never returns key value
+DELETE /api/keys/{id}     → delete key scoped to current user
+```
+
+All require `ApiPolicy` (authenticated user). Key listing exposes only metadata (id, name, expiry, lastUsed, created).
+
+### Hangfire Dashboard Auth
+
+`HangfireAuthorizationFilter` (`ObjeX.Api/Auth/`) allows localhost unconditionally; otherwise requires `IsInRole("Admin")`. Dashboard is at `/hangfire`.
 
 ---
 
@@ -49,15 +164,11 @@ builder.Services.AddSingleton<FileSystemStorageService>(...);
 builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService<FileSystemStorageService>());
 ```
 
-**Dashboard:** `/hangfire` — currently `LocalRequestsOnlyAuthorizationFilter`. TODO: replace with real auth when API Key / User Auth lands.
-
 **Jobs:**
 
 | Job class | Location | Schedule | Return type | What it does |
 |---|---|---|---|---|
 | `CleanupOrphanedBlobsJob` | `Infrastructure/Jobs/` | Weekly Sun 03:00 UTC | `Task<CleanupResult>` | Queries all known `StoragePath` values from metadata, scans `*.blob` files on disk, deletes any not in the known set |
-
-`CleanupOrphanedBlobsJob` injects `IMetadataService` + `FileSystemStorageService` (concrete) + `ILogger`. It owns the full GC logic — `FileSystemStorageService` does NOT have a cleanup method.
 
 `CleanupResult` (record, defined in same file): `FilesChecked`, `FilesDeleted`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
 
@@ -69,7 +180,6 @@ builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService
 
 ```csharp
 // ObjeX.Core/Interfaces/IObjectStorageService.cs
-// Responsibility: read/write actual file bytes to disk
 public interface IObjectStorageService
 {
     Task<string> StoreAsync(string bucketName, string key, Stream data, CancellationToken ctk = default);
@@ -80,7 +190,6 @@ public interface IObjectStorageService
 }
 
 // ObjeX.Core/Interfaces/IMetadataService.cs
-// Responsibility: track object/bucket info in the database
 public interface IMetadataService
 {
     Task<Bucket> CreateBucketAsync(Bucket bucket, CancellationToken ctk = default);
@@ -98,7 +207,6 @@ public interface IMetadataService
 }
 
 // ObjeX.Core/Interfaces/IHashService.cs
-// Responsibility: compute deterministic hashes for storage path derivation
 public interface IHashService
 {
     string ComputeHash(string input); // returns 64-char lowercase hex string
@@ -112,7 +220,9 @@ public interface IHashService
 ```csharp
 // Bucket: Id (Guid), Name, ObjectCount, TotalSize, Objects (nav), CreatedAt, UpdatedAt
 // BlobObject: Id (Guid), BucketName, Key, Size, ContentType, ETag, StoragePath, Bucket (nav), CreatedAt, UpdatedAt
-// Both implement IHasTimestamps
+// ApiKey: Id (Guid), Key (auto-generated), Name, UserId, User (nav), ExpiresAt, LastUsedAt, CreatedAt, UpdatedAt
+// User: extends IdentityUser — adds StorageUsedBytes
+// All except User implement IHasTimestamps
 ```
 
 ---
@@ -141,7 +251,7 @@ var dbPath = Path.Combine(solutionRoot, "objex.db");
 
 ### Content-Addressable Blob Layout
 
-Physical blob paths are **derived from a SHA256 hash of `"{bucketName}/{key}"`**, not from the key string itself. This is done by `IHashService` → `Sha256HashService`.
+Physical blob paths are **derived from a SHA256 hash of `"{bucketName}/{key}"`**, not from the key string itself.
 
 ```
 {basePath}/{bucketName}/{L1}/{L2}/{hash}.blob
@@ -158,14 +268,7 @@ Example:
 **Why hashed paths:**
 - Eliminates path traversal risk — the logical key never touches the filesystem raw
 - Distributes files evenly across 256×256 = 65,536 directories — no hot directories
-- Renaming or moving a logical key (future) doesn't require copying bytes, just updating `StoragePath` in the DB
 - Decouples the public key namespace from the physical layout entirely
-
-**Virtual folder paths** (e.g. `images/2024/photo.jpg`) live only in the database (`BlobObject.Key`). There are no corresponding subdirectories on disk for virtual folders.
-
-**`CleanupOrphanedBlobsAsync(IReadOnlySet<string> knownStoragePaths)`** — call this on `FileSystemStorageService` to scan `*.blob` files and delete any not present in the known set. Use after bulk deletes or for periodic GC. No automatic scheduling — caller decides when to run it.
-
-**Future:** content-based deduplication (hash file bytes, not key) is tracked in a TODO comment in `FileSystemStorageService`. Not implemented — would require ref-counting in metadata.
 
 ---
 
@@ -175,14 +278,14 @@ Example:
 
 **Combined host:** `ObjeX.Api` is the single process — it serves both the REST API and the Blazor UI. `ObjeX.Web` is a class library of components, referenced by `ObjeX.Api` as a project dependency. `ObjeX.Web/Program.cs` is dead scaffolding — ignore it.
 
-**Data access from Blazor:** Components inject Core interfaces (`IMetadataService`) directly — no HttpClient, no API calls. Blazor runs server-side in the same process and DI container as the API, so direct injection is correct and efficient. The REST API is the public S3-compatible surface for external clients only.
+**Data access from Blazor:** Components inject Core interfaces (`IMetadataService`) or `ObjeXDbContext` directly — no HttpClient, no API calls. Blazor runs server-side in the same process and DI container as the API, so direct injection is correct and efficient.
 
 ```
 Browser → SignalR → Blazor Server (ObjeX.Api process)
                          ↓
-                   IMetadataService (Core interface)
+                   IMetadataService / ObjeXDbContext
                          ↓
-                   SqliteMetadataService (Infrastructure)
+                   SqliteMetadataService / EF Core
 
 External S3 clients → HTTP → ObjeX.Api endpoints → same services
 ```
@@ -195,46 +298,63 @@ External S3 clients → HTTP → ObjeX.Api endpoints → same services
 - **Enforcement** → service layer only (`SqliteMetadataService` calls `BucketNameValidator`, throws `ArgumentException` on invalid input)
 - **UX feedback** → Blazor dialogs use the same `BucketNameValidator` from Core for inline errors as the user types
 - **API endpoints** → do NOT duplicate validation; catch `ArgumentException` from the service and return `400 BadRequest`
-- Never call `BucketNameValidator` in both the API endpoint and the service — service is the single enforcer
 
 **Input reactivity:** Use native `<input @oninput="...">` with `class="rz-textbox"` instead of `<RadzenTextBox>` when you need per-keystroke updates. Radzen's `ValueChanged` fires on `onchange` (blur), not `oninput`.
 
-**EF Core + `init` properties:** Both `Bucket` and `BlobObject` use `Guid Id { get; init; } = Guid.NewGuid()`. EF Core 10 must be told not to generate its own value — both entities have `.ValueGeneratedNever()` configured in `ObjeXDbContext`. Do not remove this — removing it causes "Unexpected entry.EntityState: Detached" on insert.
+**EF Core + `init` properties:** Both `Bucket` and `BlobObject` use `Guid Id { get; init; } = Guid.NewGuid()`. EF Core 10 must be told not to generate its own value — both entities have `.ValueGeneratedNever()` configured in `ObjeXDbContext`. Do not remove this — removing it causes "Unexpected entry.EntityState: Detached" on insert. Same applies to `ApiKey.Id` and `ApiKey.Key`.
 
-**Dialogs:** Use `DialogService.OpenAsync<TComponent>("Title")` — returns the value passed to `DialogService.Close(value)`, or `null` if cancelled. Always null-check the return before acting on it.
+**Dialogs:** Use `DialogService.OpenAsync<TComponent>("Title")` — returns the value passed to `DialogService.Close(value)`, or `null` if cancelled. Always null-check the return before acting on it. For complex return types, define a nested `public record` inside the dialog's `@code` block and reference it as `DialogComponent.RecordType` from the caller. Use `OpenAsync` (not `Alert`) when the dialog body needs rendered HTML — `Alert` renders plain text only.
 
-**File downloads are the exception to "no API calls from Blazor":** Blazor Server runs on the server and cannot push file bytes to the browser's download manager through SignalR. The browser must make a direct HTTP GET request to download a file. Therefore, download buttons use a plain `<a href="/api/objects/..." download>` pointing at the API endpoint. This is not an architecture violation — it's a browser constraint. Rule of thumb: Blazor reads/writes data through the service layer; file downloads are a browser concern.
+**File downloads are the exception to "no API calls from Blazor":** Blazor Server runs on the server and cannot push file bytes to the browser's download manager through SignalR. Download buttons use a plain `<a href="/api/objects/..." download>` pointing at the API endpoint. This is not an architecture violation — it's a browser constraint.
 
 ---
 
 ## Endpoint Routes
 
 ```
+# Buckets (require ApiPolicy)
 GET    /api/buckets               → list buckets
 POST   /api/buckets?name={name}   → create bucket
 GET    /api/buckets/{name}        → get bucket
 DELETE /api/buckets/{name}        → delete bucket
 
-PUT    /{bucket}/{*key}           → upload object
-GET    /{bucket}/{*key}           → download object
-DELETE /{bucket}/{*key}           → delete object
-GET    /{bucket}/                 → list objects in bucket
+# Objects (require ApiPolicy)
+PUT    /api/objects/{bucket}/{*key}   → upload object
+GET    /api/objects/{bucket}/{*key}   → download object
+DELETE /api/objects/{bucket}/{*key}   → delete object
+GET    /api/objects/{bucket}/         → list objects in bucket
+
+# API Keys (require ApiPolicy)
+POST   /api/keys          → create key; response includes key value (shown once)
+GET    /api/keys          → list user's keys (no key value exposed)
+DELETE /api/keys/{id}     → delete key
+
+# Auth (no auth required)
+POST   /account/login     → form login (sets cookie), redirects to returnUrl
+GET    /account/logout    → clears cookie, redirects to /login
+
+# System
+GET    /health            → health check
+GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
+GET    /scalar/v1         → interactive API docs (require auth)
 ```
 
 ---
 
 ## Key NuGet Packages
 
-| Package                            | Used for                         |
-|------------------------------------|----------------------------------|
-| `Microsoft.EntityFrameworkCore.Sqlite` | SQLite persistence           |
-| `EFCore.NamingConventions`         | snake_case DB columns            |
-| `Scalar.AspNetCore`                | Interactive API docs at `/scalar/v1` |
-| `Serilog.AspNetCore`               | Structured request logging       |
-| `Microsoft.AspNetCore.OpenApi`     | OpenAPI spec generation          |
-| `Hangfire.Core`                    | Background job scheduling        |
-| `Hangfire.AspNetCore`              | Hangfire DI + ASP.NET Core host integration |
-| `Hangfire.Storage.SQLite`          | Hangfire job store (reuses `objex.db`) |
+| Package | Used for |
+|---|---|
+| `Microsoft.EntityFrameworkCore.Sqlite` | SQLite persistence |
+| `EFCore.NamingConventions` | snake_case DB columns |
+| `Microsoft.AspNetCore.Identity.EntityFrameworkCore` | User auth, password hashing, roles |
+| `Scalar.AspNetCore` | Interactive API docs at `/scalar/v1` |
+| `Serilog.AspNetCore` | Structured request logging |
+| `Microsoft.AspNetCore.OpenApi` | OpenAPI spec generation |
+| `Hangfire.Core` | Background job scheduling |
+| `Hangfire.AspNetCore` | Hangfire DI + ASP.NET Core host integration |
+| `Hangfire.Storage.SQLite` | Hangfire job store (reuses `objex.db`) |
+| `Radzen.Blazor` | UI component library |
 
 ---
 
@@ -243,8 +363,9 @@ GET    /{bucket}/                 → list objects in bucket
 ```bash
 cd src/ObjeX.Api
 dotnet run
-# → http://localhost:8080
+# → http://localhost:8080  (login: admin / admin)
 # → http://localhost:8080/scalar/v1  (API docs)
+# → http://localhost:8080/hangfire   (job dashboard)
 # → http://localhost:8080/health
 ```
 
@@ -258,22 +379,17 @@ dotnet ef database update  # or just run the app — auto-migrates
 
 ---
 
-## Roadmap
-
-See ROADMAP.md for the full plan. Priority order:
+## Roadmap (Priority Order)
 
 1. **Dockerize** — multi-stage Dockerfile, docker-compose, volume mounts for `/data`, multi-arch
-2. **Blazor UI (basic)** — Radzen, dashboard stats, bucket CRUD, file browser, drag-drop upload ✅ in progress
-3. **API Key Auth** — `X-API-Key` middleware, `ApiKey` model in DB, expiry, key management UI
-4. **Object listing with prefix/delimiter** — prefix + delimiter params in `ListObjectsAsync`
-5. **S3 Compatibility** — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes
-6. **Multipart Upload** — Initiate/UploadPart/Complete endpoints, temp part storage, 5GB+ support
-7. **Presigned URLs** — HMAC-SHA256 signed URLs, expiry enforcement, upload + download
-8. **Enhanced Blazor UI** — previews, bulk ops, folder nav, dark mode, analytics charts
-9. **Object Tags** — key-value tags, tag-based search, lifecycle/retention policies
-10. **Advanced Search** — full-text filename, filter by type/size/date, faceted search
-11. **User Auth** — ASP.NET Core Identity, roles (Admin/User/ReadOnly), JWT for API
-12. **Bucket Permissions** — per-bucket ACL, read/write/delete, permission checks in endpoints
-13. **Teams/Orgs** — multi-tenant, org workspaces, team roles, storage quotas
-14. **Storage backends** — swap `FileSystemStorageService` for cloud or chunked storage
-15. **PostgreSQL support** — swap SQLite via same `IMetadataService` interface
+2. **Object listing with prefix/delimiter** — prefix + delimiter params in `ListObjectsAsync`
+3. **S3 Compatibility** — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes
+4. **Multipart Upload** — Initiate/UploadPart/Complete endpoints, temp part storage, 5GB+ support
+5. **Presigned URLs** — HMAC-SHA256 signed URLs, expiry enforcement, upload + download
+6. **Enhanced Blazor UI** — previews, bulk ops, folder nav, dark mode, analytics charts
+7. **Object Tags** — key-value tags, tag-based search, lifecycle/retention policies
+8. **User Management UI** — registration, user list, password reset (Identity backend already in place)
+9. **Bucket Permissions** — per-bucket ACL, read/write/delete, permission checks in endpoints
+10. **Teams/Orgs** — multi-tenant, org workspaces, team roles, storage quotas
+11. **Storage backends** — swap `FileSystemStorageService` for cloud or chunked storage
+12. **PostgreSQL support** — swap SQLite via same `IMetadataService` interface
