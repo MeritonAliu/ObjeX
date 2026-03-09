@@ -362,7 +362,8 @@ POST   /account/login     → form login (sets cookie), redirects to returnUrl
 GET    /account/logout    → clears cookie, redirects to /login
 
 # System
-GET    /health            → health check
+GET    /health            → liveness (200 if process is up, no checks); also at /health/live
+GET    /health/ready      → readiness (checks DB connectivity + blob storage writability)
 GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
 GET    /scalar/v1         → interactive API docs (require auth)
 ```
