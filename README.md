@@ -200,13 +200,13 @@ Create response: `{"key":"obx_...","name":"...","expiresAt":"..."}` — **key va
 
 ## Configuration
 
-No config required for local dev. Defaults:
+No config required for local dev. Defaults (from `appsettings.json`):
 
 | Setting | Default |
 |---------|---------|
 | Port | `http://localhost:8080` |
-| Database | `<solution-root>/objex.db` |
-| Blob storage | `<solution-root>/data/blobs/` |
+| Database | `./data/db/objex.db` (relative to working directory) |
+| Blob storage | `./data/blobs` (relative to working directory) |
 | Admin username | `admin` |
 | Admin email | `admin@objex.local` |
 | Admin password | `admin` |
@@ -216,10 +216,10 @@ Override via `appsettings.json` or environment variables:
 ```json
 {
   "ConnectionStrings": {
-    "DefaultConnection": "Data Source=/data/objex.db"
+    "DefaultConnection": "Data Source=/opt/objex/data/db/objex.db"
   },
   "Storage": {
-    "BasePath": "/data/blobs"
+    "BasePath": "/opt/objex/data/blobs"
   },
   "DefaultAdmin": {
     "Username": "myadmin",
@@ -228,6 +228,8 @@ Override via `appsettings.json` or environment variables:
   }
 }
 ```
+
+> ⚠️ Change default admin credentials before exposing the instance publicly.
 
 ### Blob Layout on Disk
 
@@ -293,6 +295,33 @@ See [ROADMAP.md](./ROADMAP.md) for the full plan.
 - [ ] **PostgreSQL support** — swap SQLite via `IMetadataService` interface
 
 ---
+
+## CI/CD
+
+Two GitHub Actions workflows in `.github/workflows/`:
+
+| Workflow | File | Trigger | Runner |
+|----------|------|---------|--------|
+| CI | `ci.yml` | Push to `main`, any PR | `ubuntu-latest` (GitHub-hosted) |
+| CD | `cd.yml` | Push to `main`, manual dispatch | Self-hosted (`objex`, `cd`, `dev` labels) |
+
+**CI** — build-only gate: restore → build Release → fail fast on compile errors. No tests yet.
+
+**CD (dev instance)** — deploys to `~/objex-live/` on the self-hosted runner VM:
+1. Build + publish (Debug, `ASPNETCORE_ENVIRONMENT=Development`)
+2. `pkill -f ObjeX.Api.dll` to stop the running instance
+3. `rsync --exclude='data/'` to `~/objex-live/` — data directories are preserved across deploys
+4. Start via `screen -dmS objex dotnet ObjeX.Api.dll --urls http://0.0.0.0:8080`
+
+Data layout on the dev VM:
+```
+~/objex-live/
+├── ObjeX.Api.dll       # published app
+├── appsettings.json    # bundled config
+└── data/
+    ├── db/objex.db     # SQLite database (preserved by rsync --exclude)
+    └── blobs/          # blob files (preserved by rsync --exclude)
+```
 
 ## References
 

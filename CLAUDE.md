@@ -240,14 +240,12 @@ public interface IHashService
 
 ## Storage Paths
 
-- **Database**: `{solution-root}/objex.db` by default, or `ConnectionStrings:DefaultConnection` in config
-- **Default blob path**: two levels up from `ContentRootPath` + `/data/blobs` (i.e. solution root)
+`Program.cs` contains fallback path logic (walks up to solution root) but it is overridden by `appsettings.json` in practice:
 
-The DB path logic in `Program.cs`:
-```csharp
-var solutionRoot = currentDir.Parent?.Parent?.FullName; // src/ObjeX.Api → src → solution root
-var dbPath = Path.Combine(solutionRoot, "objex.db");
-```
+- **Database**: `./data/db/objex.db` (relative to working directory, set in `ConnectionStrings:DefaultConnection`)
+- **Blob storage**: `./data/blobs` (relative to working directory, set in `Storage:BasePath`)
+
+The fallback logic in `Program.cs` only activates when `ConnectionStrings:DefaultConnection` is absent from config — don't rely on it. Always configure explicit paths in appsettings for deployed instances.
 
 ### Content-Addressable Blob Layout
 
@@ -355,6 +353,27 @@ GET    /scalar/v1         → interactive API docs (require auth)
 | `Hangfire.AspNetCore` | Hangfire DI + ASP.NET Core host integration |
 | `Hangfire.Storage.SQLite` | Hangfire job store (reuses `objex.db`) |
 | `Radzen.Blazor` | UI component library |
+
+---
+
+## CI/CD
+
+Two workflows in `.github/workflows/`:
+
+**`ci.yml`** — build gate, GitHub-hosted runner (`ubuntu-latest`)
+- Triggers: push to `main`, any PR
+- Steps: checkout → setup .NET (from `global.json`) → restore → build Release
+- No tests yet (nothing to run)
+
+**`cd.yml`** — dev deployment, self-hosted runner (labels: `self-hosted`, `objex`, `cd`, `dev`)
+- Triggers: push to `main`, `workflow_dispatch`
+- `ASPNETCORE_ENVIRONMENT=Development`, builds Debug
+- Stop: `pkill -f "ObjeX.Api.dll" || true`
+- Deploy: `rsync -av --delete --exclude='data/' ./publish/ ~/objex-live/` — the `--exclude='data/'` is critical, it preserves the SQLite DB and blobs across deploys
+- Data dirs: `~/objex-live/data/db/` and `~/objex-live/data/blobs/`
+- Start: `screen -dmS objex dotnet ObjeX.Api.dll --urls "http://0.0.0.0:8080"` — runs detached in a `screen` session named `objex`
+
+To check the running instance on the VM: `screen -r objex` (detach with Ctrl+A D).
 
 ---
 

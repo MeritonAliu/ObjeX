@@ -28,6 +28,10 @@
 - **Settings page** (`/settings`) — API key management (create with one-time key display, list, delete)
 - Toast notifications bottom-right via Radzen `NotificationService`
 
+### CI/CD ✅
+- **CI** (`ci.yml`) — triggers on push to `main` and all PRs; runs on `ubuntu-latest`; restore → build Release; fails fast on compile errors; no tests yet
+- **CD** (`cd.yml`) — triggers on push to `main` and manual dispatch; runs on self-hosted runner (labels: `objex`, `cd`, `dev`); builds Debug with `ASPNETCORE_ENVIRONMENT=Development`; stops running instance with `pkill`, deploys to `~/objex-live/` via `rsync --exclude='data/'` (data directories preserved across deploys), starts app in a `screen` session (`screen -dmS objex dotnet ObjeX.Api.dll`)
+
 ### Authentication & Authorization ✅
 - **ASP.NET Core Identity** — `User` extends `IdentityUser`, `ObjeXDbContext` extends `IdentityDbContext<User>`
 - **Roles** — `Admin` and `User` seeded on first startup
