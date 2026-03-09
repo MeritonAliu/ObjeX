@@ -1,5 +1,4 @@
 name: CD
-
 on:
   push:
     branches:
@@ -9,15 +8,12 @@ on:
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
   ASPNETCORE_ENVIRONMENT: Development
-  DEPLOY_DIR: /opt/objex
-  DATA_DIR: /opt/objex/data
-  SERVICE_NAME: objex
 
 jobs:
   deploy:
     name: Build & Deploy
     runs-on: [self-hosted, objex, cd, dev]
-
+    
     steps:
       # ── 1. Source ────────────────────────────────────────────────────────────
       - name: Checkout
@@ -34,7 +30,7 @@ jobs:
         run: dotnet restore ObjeX.slnx
 
       # ── 4. Build ─────────────────────────────────────────────────────────────
-      - name: Build (Debug)
+      - name: Build
         run: dotnet build ObjeX.slnx --no-restore --configuration Debug
 
       # ── 5. Publish ───────────────────────────────────────────────────────────
@@ -46,36 +42,24 @@ jobs:
             --self-contained false \
             --output ./publish
 
-      # ── 6. Stop service ──────────────────────────────────────────────────────
-      - name: Stop ObjeX service
+      # ── 6. Stop running instance ─────────────────────────────────────────────
+      - name: Stop running ObjeX
         run: |
-          if systemctl is-active --quiet ${{ env.SERVICE_NAME }}; then
-            echo "Stopping ${{ env.SERVICE_NAME }}..."
-            sudo systemctl stop ${{ env.SERVICE_NAME }}
-          else
-            echo "Service ${{ env.SERVICE_NAME }} is not running — skipping stop."
-          fi
+          pkill -f "ObjeX.Api.dll" || true
+          sleep 2
 
-      # ── 7. Deploy files ──────────────────────────────────────────────────────
-      - name: Copy published files to deployment directory
+      # ── 7. Deploy ────────────────────────────────────────────────────────────
+      - name: Deploy files
         run: |
-          sudo rsync -a --delete ./publish/ ${{ env.DEPLOY_DIR }}/
+          mkdir -p ~/objex-live/data/db
+          mkdir -p ~/objex-live/data/blobs
+          rsync -av --delete ./publish/ ~/objex-live/
 
-      # ── 8. Ensure data directories exist ─────────────────────────────────────
-      - name: Create data directories
+      # ── 8. Start ─────────────────────────────────────────────────────────────
+      - name: Start ObjeX
         run: |
-          sudo mkdir -p ${{ env.DATA_DIR }}/blobs
-          sudo mkdir -p ${{ env.DATA_DIR }}/db
-
-      # ── 9. Fix ownership & permissions ────────────────────────────────────────
-      - name: Set file ownership
-        run: |
-          sudo chown -R ${{ env.SERVICE_NAME }}:${{ env.SERVICE_NAME }} ${{ env.DEPLOY_DIR }}
-          sudo chmod -R 750 ${{ env.DEPLOY_DIR }}
-          # Data directory needs write access for SQLite + blob files
-          sudo chmod -R 770 ${{ env.DATA_DIR }}
-
-      # ── 10. Start service ─────────────────────────────────────────────────────
-      - name: Start ObjeX service
-        run: |
-          sudo systemctl start ${{ env.SERVICE_NAME }}
+          cd ~/objex-live
+          nohup dotnet ObjeX.Api.dll --urls "http://0.0.0.0:8080" > ~/objex.log 2>&1 &
+          sleep 2
+          echo "🚀 ObjeX deployed and running on port 8080"
+          echo "📋 Check logs: tail -f ~/objex.log"
