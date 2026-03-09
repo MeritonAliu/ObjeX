@@ -13,27 +13,22 @@ jobs:
   deploy:
     name: Build & Deploy
     runs-on: [self-hosted, objex, cd, dev]
-    
+
     steps:
-      # ── 1. Source ────────────────────────────────────────────────────────────
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ── 2. SDK ───────────────────────────────────────────────────────────────
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           global-json-file: global.json
 
-      # ── 3. Restore ───────────────────────────────────────────────────────────
       - name: Restore dependencies
         run: dotnet restore ObjeX.slnx
 
-      # ── 4. Build ─────────────────────────────────────────────────────────────
       - name: Build
         run: dotnet build ObjeX.slnx --no-restore --configuration Debug
 
-      # ── 5. Publish ───────────────────────────────────────────────────────────
       - name: Publish API
         run: |
           dotnet publish src/ObjeX.Api/ObjeX.Api.csproj \
@@ -42,24 +37,27 @@ jobs:
             --self-contained false \
             --output ./publish
 
-      # ── 6. Stop running instance ─────────────────────────────────────────────
       - name: Stop running ObjeX
         run: |
           pkill -f "ObjeX.Api.dll" || true
           sleep 2
 
-      # ── 7. Deploy ────────────────────────────────────────────────────────────
       - name: Deploy files
         run: |
+          rsync -av --delete --exclude='data/' ./publish/ ~/objex-live/
           mkdir -p ~/objex-live/data/db
           mkdir -p ~/objex-live/data/blobs
-          rsync -av --delete --exclude='data/' ./publish/ ~/objex-live/
 
-      # ── 8. Start ─────────────────────────────────────────────────────────────
-      - name: Start ObjeX
+      - name: Start ObjeX (detached)
         run: |
           cd ~/objex-live
-          screen -dmS objex dotnet ObjeX.Api.dll --urls "http://0.0.0.0:8080"
-          sleep 2
-          echo "🚀 ObjeX started in screen session 'objex'"
-          screen -ls
+          setsid dotnet ObjeX.Api.dll --urls "http://0.0.0.0:8080" > ~/objex.log 2>&1 &
+          sleep 3
+          if pgrep -f "ObjeX.Api.dll" > /dev/null; then
+            echo "✅ ObjeX started successfully"
+            ps aux | grep -v grep | grep ObjeX.Api.dll
+          else
+            echo "❌ ObjeX failed to start"
+            tail -20 ~/objex.log
+            exit 1
+          fi
