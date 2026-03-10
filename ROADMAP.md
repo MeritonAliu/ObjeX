@@ -201,6 +201,7 @@ Currently ETag is computed on upload and stored, but never checked on download. 
 
 ## Future Considerations
 
+- Prometheus `/metrics` endpoint — `prometheus-net.AspNetCore`; expose request rates, upload/download counts, storage used, active connections; enables Grafana dashboards
 - Backup tooling — `export` / `restore` CLI commands; scheduled backup to local path or remote (S3, rclone)
 - Metadata rebuild from disk — currently impossible; would require storing the logical key alongside the blob (e.g. in a sidecar file or blob header), then scanning blobs to reconstruct `objex.db` after total DB loss
 - Hangfire on separate SQLite file — reduces lock contention between job store and EF Core under write-heavy load

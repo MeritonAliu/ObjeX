@@ -221,6 +221,7 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Port | `http://localhost:8080` |
 | Database | `./data/db/objex.db` (relative to working directory) |
 | Blob storage | `./data/blobs` (relative to working directory) |
+| Log files | `./data/logs/objex-YYYYMMDD.log` — daily rolling, 30 days retention, compact JSON |
 | Admin username | `admin` |
 | Admin email | `admin@objex.local` |
 | Admin password | `admin` |
@@ -400,6 +401,7 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Health checks — `/health/live` (liveness) and `/health/ready` (readiness: DB + blob storage)
 - [x] Serilog structured logging + request logging
 - [x] Security audit logs — failed logins, invalid/expired API keys, object/bucket deletes, API key create/delete
+- [x] Daily rolling log files — compact JSON to `./data/logs/`, 30-day retention (Filebeat/Promtail compatible)
 - [x] Response compression
 
 ---
