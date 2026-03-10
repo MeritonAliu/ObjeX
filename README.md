@@ -175,6 +175,8 @@ Bucket name rules: 3–63 chars, lowercase alphanumeric and hyphens, no consecut
 
 Object keys support slashes (virtual folders): `PUT /api/objects/my-bucket/images/photo.jpg`
 
+**Key validation:** keys are rejected with `400` if they are empty, exceed 1024 characters, start with `/`, or contain control characters (including null bytes). `..` segments and `\` are normalised on the storage path but the original key is stored as-is.
+
 **Overwrite semantics:** `PUT` to an existing key silently overwrites — last write wins. The old blob becomes an orphan and is cleaned up by the weekly GC job. Safe to retry on network failure.
 
 Upload response:

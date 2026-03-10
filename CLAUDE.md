@@ -256,7 +256,7 @@ public interface IHashService
 - **JSON responses**: camelCase, nulls omitted (`JsonNamingPolicy.CamelCase`, `WhenWritingNull`)
 - **EF migrations**: run automatically on startup via `db.Database.Migrate()` in `Program.cs`
 - **Bucket name rules**: 3–63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens, no leading/trailing hyphens — enforced by `BucketNameValidator`
-- **Object keys**: support slashes (virtual paths), sanitized by stripping `..` and normalising `\` → `/`
+- **Object keys**: support slashes (virtual paths). Validated by `ObjectKeyValidator.GetValidationError` (in `ObjeX.Core/Validation/`) — rejects empty, >1024 chars, leading `/`, control characters (including null bytes), and keys that normalize to empty after stripping `..` and `\`. `SanitizeKey` in `FileSystemStorageService` then strips `..` and normalises `\` → `/` before hashing — the logical key is stored as-is in DB, the physical path is always a SHA256 hash
 - **ETag**: MD5 of the uploaded stream, hex-encoded lowercase
 
 ---

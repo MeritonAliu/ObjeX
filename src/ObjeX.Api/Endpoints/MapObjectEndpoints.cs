@@ -4,11 +4,13 @@ using System.Security.Claims;
 using ObjeX.Core.Interfaces;
 using ObjeX.Core.Models;
 using ObjeX.Core.Utilities;
+using ObjeX.Core.Validation;
 
 namespace ObjeX.Api.Endpoints;
 
 public static class ObjectEndpoints
 {
+
     public static RouteGroupBuilder MapObjectEndpoints(this WebApplication app)
     {
         var objects = app.MapGroup("api/objects/{bucketName}").WithTags("Objects");
@@ -20,10 +22,11 @@ public static class ObjectEndpoints
             IMetadataService metadata,
             IObjectStorageService storage) =>
         {
+            if (ObjectKeyValidator.GetValidationError(key) is string keyError)
+                return Results.BadRequest(new { error = keyError });
+
             if (!await metadata.ExistsBucketAsync(bucketName))
-            {
                 return Results.NotFound(new { error = "Bucket not found" });
-            }
 
             var contentType = request.ContentType ?? "application/octet-stream";
 
@@ -54,6 +57,9 @@ public static class ObjectEndpoints
             IMetadataService metadata,
             IObjectStorageService storage) =>
         {
+            if (ObjectKeyValidator.GetValidationError(key) is string keyError)
+                return Results.BadRequest(new { error = keyError });
+
             var obj = await metadata.GetObjectAsync(bucketName, key);
             if (obj is null)
                 return Results.NotFound(new { error = "Object not found" });
@@ -71,6 +77,9 @@ public static class ObjectEndpoints
             IObjectStorageService storage,
             ILogger<BlobObject> logger) =>
         {
+            if (ObjectKeyValidator.GetValidationError(key) is string keyError)
+                return Results.BadRequest(new { error = keyError });
+
             if (!await metadata.ExistsObjectAsync(bucketName, key))
                 return Results.NotFound(new { error = "Object not found" });
 
