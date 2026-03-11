@@ -8,6 +8,7 @@ using ObjeX.Api.Auth;
 using ObjeX.Core.Interfaces;
 using ObjeX.Infrastructure.Data;
 using ObjeX.Infrastructure.Hashing;
+using ObjeX.Infrastructure.Health;
 using ObjeX.Infrastructure.Jobs;
 using ObjeX.Infrastructure.Metadata;
 using ObjeX.Infrastructure.Storage;
@@ -38,7 +39,9 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 builder.Services.AddOpenApi();
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ObjeXDbContext>(tags: ["ready"])
+    .AddCheck<BlobStorageHealthCheck>("blob_storage", tags: ["ready"]);
 
 builder.Services.AddResponseCompression(options =>
 {
@@ -194,6 +197,16 @@ app.UseWhen(
     branch => branch.UseStatusCodePagesWithReExecute("/not-found"));
 app.UseStaticFiles();
 app.UseCors();
+app.Use(async (ctx, next) =>
+{
+    ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
+    ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    ctx.Response.Headers["X-Permitted-Cross-Domain-Policies"] = "none";
+    ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
+    if (!app.Environment.IsDevelopment())
+        ctx.Response.Headers["Strict-Transport-Security"] = "max-age=63072000; includeSubDomains";
+    await next();
+});
 app.UseAuthentication();
 app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
 app.UseAuthorization();
@@ -234,6 +247,11 @@ app.MapScalarApiReference(options =>
     options.WithTitle("ObjeX API");
 }).RequireAuthorization();
 app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live");
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

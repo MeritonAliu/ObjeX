@@ -134,20 +134,27 @@
 
 ## Phase 4 — Multi-User & Permissions
 
-### 8. User Management UI
+### 8. Storage Quotas
+- `User.StorageUsedBytes` is tracked but not enforced — decorative until quota enforcement is wired in
+- Add `StorageQuotaBytes` to `User` model (nullable = unlimited)
+- Check `StorageUsedBytes + incomingSize > StorageQuotaBytes` before accepting upload — return 413 with clear message
+- Admin UI to set per-user quota
+- Verify `StorageUsedBytes` is correctly updated on upload and delete before enforcing
+
+### 10. User Management UI
 - Identity backend already implemented (User model, roles, password hashing)
 - Registration page
 - Admin user list (view, deactivate, role assignment)
 - Password reset flow (requires real email sender — currently `NoOpEmailSender`)
 - Email verification
 
-### 9. Bucket Permissions
+### 11. Bucket Permissions
 - Per-bucket access control list (ACL)
 - Read / Write / Delete permissions per user
 - Permission management UI (admin)
 - Permission checks enforced in all API endpoints
 
-### 10. Teams & Organizations
+### 12. Teams & Organizations
 - Multi-tenant support with organization workspaces
 - Team membership (Owner / Admin / Member roles)
 - Per-organization storage quotas
@@ -156,13 +163,44 @@
 
 ---
 
-## Phase 5 — Storage Extensibility
+## Phase 5 — Testing & Hardening
 
-### 11. Storage Backends
+### 13. Automated Test Suite
+
+CI is currently build-only. Before production-ready claim, need:
+
+**Integration tests (real SQLite, no mocks):**
+- Upload → download round-trip with ETag verification
+- Upload → delete → confirm 404
+- Bucket CRUD lifecycle
+- Auth boundary: no key, expired key, wrong key, valid cookie, valid API key
+- Path traversal fuzzing on object keys (`../`, `..\\`, URL-encoded variants)
+- Concurrent uploads to same key (race condition validation)
+- Large file streaming (500MB+)
+
+**Fault injection:**
+- Disk full mid-upload — confirm `.tmp` cleaned, 500 returned, no partial state
+- Corrupt blob file — current: returns corrupt bytes with 200; target: detect via ETag mismatch on read
+- Missing blob with valid metadata — confirm 404, not 500
+- `SQLITE_BUSY` simulation under concurrent write load
+
+**Operational:**
+- Backup and restore drill — stop, backup, wipe, restore, verify `/health/ready` + spot-check downloads
+- Hangfire GC job triggered manually — verify orphaned blobs removed, metadata-backed blobs untouched
+
+### 14. ETag Verification on Read
+
+Currently ETag is computed on upload and stored, but never checked on download. A corrupt or partially-overwritten blob file returns 200 with bad bytes. Fix: re-hash on read and compare; return 500 with a clear error if mismatch.
+
+---
+
+## Phase 7 — Storage Extensibility
+
+### 15. Storage Backends
 - Implement additional `IObjectStorageService` backends (cloud, chunked, etc.)
 - Swap in without changing any other layer
 
-### 12. PostgreSQL Support
+### 16. PostgreSQL Support
 - Swap SQLite for PostgreSQL via same `IMetadataService` interface
 - Configuration-driven backend selection
 
@@ -170,6 +208,11 @@
 
 ## Future Considerations
 
+- Unicode key normalization — macOS clients upload with NFD normalization, Linux with NFC; the same filename produces different SHA256 hashes and is stored as two separate objects. Fix: normalize all keys to NFC on ingest
+- Prometheus `/metrics` endpoint — `prometheus-net.AspNetCore`; expose request rates, upload/download counts, storage used, active connections; enables Grafana dashboards
+- Backup tooling — `export` / `restore` CLI commands; scheduled backup to local path or remote (S3, rclone)
+- Metadata rebuild from disk — currently impossible; would require storing the logical key alongside the blob (e.g. in a sidecar file or blob header), then scanning blobs to reconstruct `objex.db` after total DB loss
+- Hangfire on separate SQLite file — reduces lock contention between job store and EF Core under write-heavy load
 - OAuth / SSO (Google, GitHub, OIDC)
 - Content-based search (Elasticsearch integration)
 - Image recognition / auto-tagging (ML)

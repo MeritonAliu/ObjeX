@@ -11,7 +11,7 @@ public static class ApiKeyEndpoints
     {
         var group = app.MapGroup("/api/keys").WithTags("API Keys");
 
-        group.MapPost("/", async (HttpContext ctx, ObjeXDbContext db, CreateApiKeyRequest req) =>
+        group.MapPost("/", async (HttpContext ctx, ObjeXDbContext db, CreateApiKeyRequest req, ILogger<ApiKey> logger) =>
         {
             var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
 
@@ -26,6 +26,7 @@ public static class ApiKeyEndpoints
 
             db.ApiKeys.Add(apiKey);
             await db.SaveChangesAsync();
+            logger.LogInformation("API key created: {KeyName} by {UserId}", apiKey.Name, userId);
 
             return Results.Ok(new { apiKey.Key, apiKey.Name, apiKey.ExpiresAt });
         });
@@ -42,7 +43,7 @@ public static class ApiKeyEndpoints
             return Results.Ok(keys);
         });
 
-        group.MapDelete("/{id:guid}", async (Guid id, HttpContext ctx, ObjeXDbContext db) =>
+        group.MapDelete("/{id:guid}", async (Guid id, HttpContext ctx, ObjeXDbContext db, ILogger<ApiKey> logger) =>
         {
             var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
             var apiKey = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == userId);
@@ -51,6 +52,7 @@ public static class ApiKeyEndpoints
 
             db.ApiKeys.Remove(apiKey);
             await db.SaveChangesAsync();
+            logger.LogInformation("API key deleted: {KeyName} by {UserId}", apiKey.Name, userId);
 
             return Results.NoContent();
         });

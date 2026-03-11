@@ -56,10 +56,27 @@ Both are supported simultaneously. The cookie is the default for the browser; AP
 ### Middleware Pipeline Order
 
 ```
+UseStaticFiles
+UseCors
+app.Use(...)               ← security headers (X-Content-Type-Options, X-Frame-Options, etc.)
 UseAuthentication          ← runs Identity cookie handler, sets context.User for cookie sessions
 UseMiddleware<ApiKeyAuthenticationMiddleware>  ← if not already authed, checks X-API-Key header
 UseAuthorization           ← enforces policies on the already-resolved context.User
 ```
+
+### HTTP Security Headers
+
+Set in a raw `app.Use` middleware in `Program.cs` (after `UseCors`, before auth):
+
+| Header | Value | Condition |
+|--------|-------|-----------|
+| `X-Content-Type-Options` | `nosniff` | always |
+| `X-Frame-Options` | `DENY` | always |
+| `X-Permitted-Cross-Domain-Policies` | `none` | always |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | always |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | non-dev only |
+
+CSP is intentionally omitted — Blazor Server requires inline scripts and a SignalR WebSocket (`ws://`/`wss://`), making a safe policy non-trivial. Deferred.
 
 `ApiKeyAuthenticationMiddleware` (`ObjeX.Api/Middleware/`) short-circuits if `context.User.Identity.IsAuthenticated` is already true (cookie session takes precedence). Otherwise, it looks up the key in `db.ApiKeys`, validates expiry, updates `LastUsedAt`, and sets `context.User` to a `ClaimsIdentity` with scheme `"ApiKey"`.
 
@@ -239,7 +256,7 @@ public interface IHashService
 - **JSON responses**: camelCase, nulls omitted (`JsonNamingPolicy.CamelCase`, `WhenWritingNull`)
 - **EF migrations**: run automatically on startup via `db.Database.Migrate()` in `Program.cs`
 - **Bucket name rules**: 3–63 chars, lowercase alphanumeric + hyphens, no consecutive hyphens, no leading/trailing hyphens — enforced by `BucketNameValidator`
-- **Object keys**: support slashes (virtual paths), sanitized by stripping `..` and normalising `\` → `/`
+- **Object keys**: support slashes (virtual paths). Validated by `ObjectKeyValidator.GetValidationError` (in `ObjeX.Core/Validation/`) — rejects empty, >1024 chars, leading `/`, control characters (including null bytes), and keys that normalize to empty after stripping `..` and `\`. `SanitizeKey` in `FileSystemStorageService` then strips `..` and normalises `\` → `/` before hashing — the logical key is stored as-is in DB, the physical path is always a SHA256 hash
 - **ETag**: MD5 of the uploaded stream, hex-encoded lowercase
 
 ---
@@ -345,7 +362,8 @@ POST   /account/login     → form login (sets cookie), redirects to returnUrl
 GET    /account/logout    → clears cookie, redirects to /login
 
 # System
-GET    /health            → health check
+GET    /health            → liveness (200 if process is up, no checks); also at /health/live
+GET    /health/ready      → readiness (checks DB connectivity + blob storage writability)
 GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
 GET    /scalar/v1         → interactive API docs (require auth)
 ```

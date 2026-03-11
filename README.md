@@ -21,7 +21,8 @@ Open **http://localhost:8080** — log in with `admin` / `admin`.
 - **Blazor UI**: http://localhost:8080
 - **API docs (Scalar)**: http://localhost:8080/scalar/v1
 - **Job dashboard**: http://localhost:8080/hangfire
-- **Health check**: http://localhost:8080/health
+- **Health check**: http://localhost:8080/health (liveness)
+- **Health check (readiness)**: http://localhost:8080/health/ready
 
 > ⚠️ Change the default admin credentials before exposing the instance publicly. Set `DefaultAdmin:Username`, `DefaultAdmin:Email`, and `DefaultAdmin:Password` in `appsettings.json` or environment variables.
 
@@ -149,7 +150,7 @@ ObjeX/
 
 ## API Endpoints
 
-All endpoints except `/account/*` and `/health` require authentication (`X-API-Key` header or session cookie).
+All endpoints except `/account/*` and `/health/*` require authentication (`X-API-Key` header or session cookie).
 
 ### Buckets — `/api/buckets`
 
@@ -173,6 +174,10 @@ Bucket name rules: 3–63 chars, lowercase alphanumeric and hyphens, no consecut
 | `GET` | `/api/objects/{bucket}/download` | Download objects as ZIP — accepts `?prefix=` to scope to a folder |
 
 Object keys support slashes (virtual folders): `PUT /api/objects/my-bucket/images/photo.jpg`
+
+**Key validation:** keys are rejected with `400` if they are empty, exceed 1024 characters, start with `/`, or contain control characters (including null bytes). `..` segments and `\` are normalised on the storage path but the original key is stored as-is.
+
+**Overwrite semantics:** `PUT` to an existing key silently overwrites — last write wins. The old blob becomes an orphan and is cleaned up by the weekly GC job. Safe to retry on network failure.
 
 Upload response:
 ```json
@@ -218,6 +223,7 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Port | `http://localhost:8080` |
 | Database | `./data/db/objex.db` (relative to working directory) |
 | Blob storage | `./data/blobs` (relative to working directory) |
+| Log files | `./data/logs/objex-YYYYMMDD.log` — daily rolling, 30 days retention, compact JSON |
 | Admin username | `admin` |
 | Admin email | `admin@objex.local` |
 | Admin password | `admin` |
@@ -242,9 +248,115 @@ Override via `appsettings.json` or environment variables:
 
 > ⚠️ Change default admin credentials before exposing the instance publicly.
 
+### SQLite Limitations
+
+SQLite is the right choice for single-node homelab use — zero config, no separate process, trivially backed up with `cp`. It becomes a bottleneck in specific scenarios:
+
+**What works fine:**
+- Personal or small-team use (handful of concurrent users)
+- Bursty uploads — SQLite handles short write spikes well in WAL mode
+- Read-heavy workloads — WAL mode allows concurrent readers with no lock contention
+
+**What to watch out for:**
+- **Sustained concurrent writes** — Hangfire polls every few seconds while EF Core writes on every upload/delete/key rotation. Under heavy parallel upload bursts this can produce `SQLITE_BUSY` retries and degraded throughput
+- **Network filesystems** — do not host `objex.db` on NFS, SMB, or any network-mounted path. SQLite uses POSIX advisory locks which are unreliable over NFS and can cause silent database corruption
+- **Not benchmarked** — no formal throughput testing has been done. If you need numbers, run your own load test against your hardware
+
+**Multi-instance:** startup migration (`db.Database.Migrate()`) is not safe for concurrent multi-instance deployments — if two processes start simultaneously, both race on schema migration. SQLite's file lock serializes this in practice but it's not a guarantee. ObjeX is single-node by design; if you ever run multiple instances, extract migrations into a dedicated pre-start step.
+
+**Architecture note:** Hangfire, EF Core (metadata + Identity), and the app all share one `objex.db` file. Separating Hangfire onto its own SQLite file or an in-memory store is a future improvement. For now, the weekly cleanup job is the only significant Hangfire write activity.
+
+**Upgrade path:** The `IMetadataService` interface is the only thing that needs a new implementation to swap SQLite for PostgreSQL. See roadmap.
+
+### Backup & Restore
+
+> **Current state:** no built-in backup tooling. Manual procedure only.
+
+#### What needs to be backed up
+
+ObjeX data lives in two places that must be backed up **together and consistently**:
+
+```
+data/
+├── db/objex.db     # SQLite — all metadata, user accounts, API keys, bucket definitions
+└── blobs/          # content-addressed blob files (SHA256-named .blob files)
+```
+
+The logical key → physical blob mapping exists **only in the database**. If you lose `objex.db` but keep the blobs, you have a directory of `a3f7c2....blob` files with no way to know which object each one represents. There is currently no tool to rebuild the index from disk.
+
+#### Docker (recommended setup)
+
+Data lives in a named Docker volume. To back it up:
+
+```bash
+# Stop the container first (ensures DB is not mid-write)
+docker compose stop objex
+
+# Copy the volume to a backup location
+docker run --rm \
+  -v objex_data:/data \
+  -v /your/backup/path:/backup \
+  alpine cp -a /data /backup/objex-$(date +%Y%m%d)
+
+# Restart
+docker compose start objex
+```
+
+Hot backup (without stopping) is possible using SQLite's online backup:
+```bash
+docker exec objex sqlite3 /data/db/objex.db ".backup /data/db/objex.db.bak"
+```
+Then copy the `.bak` file and the blobs. There is a small race window between the DB backup and the blob copy — any blobs written in that window will be orphaned and cleaned up by the weekly Hangfire GC job. No data loss, but a slightly inconsistent snapshot is possible.
+
+#### Bare metal / direct deploy
+
+```bash
+# Stop the app first
+pkill -f ObjeX.Api.dll
+
+cp -a ~/objex-live/data/ ~/backups/objex-$(date +%Y%m%d)/
+
+# Restart
+screen -dmS objex dotnet ~/objex-live/ObjeX.Api.dll --urls "http://0.0.0.0:8080"
+```
+
+#### Restore
+
+1. Stop the running instance
+2. Replace `data/` with the backup copy
+3. Start the instance — EF Core will validate the schema on startup
+4. Hit `/health/ready` to confirm DB connectivity and blob storage are both healthy
+5. Spot-check a few object downloads to verify blob integrity
+
+#### Consistency guarantees
+
+| Scenario | Outcome |
+|----------|---------|
+| DB newer than blobs | Object records exist with no backing blob → download returns 404 |
+| Blobs newer than DB | Orphaned blobs → cleaned up automatically by weekly Hangfire GC |
+| Both from same stopped snapshot | Fully consistent |
+
 ### Encryption
 
 ObjeX does not encrypt blobs or metadata at the application level. For data at rest, rely on full-disk encryption at the host (e.g. LUKS, BitLocker, or encrypted cloud volumes). For data in transit, run ObjeX behind a TLS-terminating reverse proxy (nginx, Caddy, Traefik).
+
+### HTTP Security Headers
+
+ObjeX sets the following headers on every response:
+
+| Header | Value |
+|--------|-------|
+| `X-Content-Type-Options` | `nosniff` |
+| `X-Frame-Options` | `DENY` |
+| `X-Permitted-Cross-Domain-Policies` | `none` |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` (non-dev only) |
+
+**Hangfire dashboard** (`/hangfire`) is publicly routable but protected by Admin role (localhost bypasses auth for dev convenience). The dashboard exposes job history, parameters, and retry controls — sufficient for a self-hosted admin tool. If you want to restrict it further (e.g. internal network only), block it at the reverse proxy: `location /hangfire { deny all; }`. ObjeX's current jobs carry no sensitive parameters; take care if you add jobs that do.
+
+Content Security Policy (CSP) is not yet set — Blazor Server requires inline scripts and a `ws://` WebSocket connection for SignalR, making a safe policy non-trivial. Deferred to a future hardening pass.
+
+**CORS:** ObjeX allows any origin (`AllowAnyOrigin`). This is intentional for self-hosted use where the origin isn't known upfront. Browsers block `AllowAnyOrigin` + `AllowCredentials` simultaneously, so cookie sessions are safe. If you add `AllowCredentials()` in the future, you must also restrict to explicit origins — the wildcard + credentials combination is rejected by browsers and would need to be replaced.
 
 ### Blob Layout on Disk
 
@@ -274,6 +386,7 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Dark mode with system preference detection (cookie-persisted, toggle in Settings)
 - [x] Atomic blob writes — write to `.tmp`, then `File.Move` into final path; stale `.tmp` cleanup on startup
 - [x] ETag computation (MD5) on upload
+- [x] `Content-Length` header on object downloads (enables progress bars and resumption)
 - [x] SQLite metadata store via EF Core (auto-migrated on startup)
 - [x] Content-addressable filesystem blob store (SHA256 hashed paths, 2-level nesting)
 - [x] Orphaned blob GC via Hangfire background job (weekly, results in dashboard)
@@ -287,8 +400,10 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Proper 401 responses for unauthenticated API requests (not 302 redirects)
 - [x] Hangfire dashboard at `/hangfire` (Admin role required)
 - [x] Scalar interactive API docs at `/scalar/v1`
-- [x] Health check endpoint at `/health`
+- [x] Health checks — `/health/live` (liveness) and `/health/ready` (readiness: DB + blob storage)
 - [x] Serilog structured logging + request logging
+- [x] Security audit logs — failed logins, invalid/expired API keys, object/bucket deletes, API key create/delete
+- [x] Daily rolling log files — compact JSON to `./data/logs/`, 30-day retention (Filebeat/Promtail compatible)
 - [x] Response compression
 
 ---
@@ -341,6 +456,39 @@ Data layout on the dev VM:
     ├── db/objex.db     # SQLite database (preserved by rsync --exclude)
     └── blobs/          # blob files (preserved by rsync --exclude)
 ```
+
+## Testing
+
+**Current state:** CI is build-only — no automated tests exist yet. The scenarios below are the known gaps before ObjeX can be considered production-ready.
+
+### Hostile Scenario Coverage
+
+| Scenario | Status | How it's handled |
+|----------|--------|-----------------|
+| Power loss mid-upload | ✅ Handled | Atomic write: `.tmp` → `File.Move`; stale `.tmp` cleaned on startup |
+| Crash between blob write and metadata commit | ✅ Handled | Orphaned blob cleaned by weekly Hangfire GC |
+| Path traversal in object key (`../../../etc/passwd`) | ✅ Handled | `SanitizeKey` strips `..` and normalises `\` → `/`; hashed paths never touch filesystem raw |
+| Expired API key attempt | ✅ Handled | Middleware checks `ExpiresAt`, returns 401 |
+| Missing blob file with valid metadata | ✅ Handled | `RetrieveAsync` throws `FileNotFoundException` → 404 |
+| Disk full during upload | ⚠️ Partially handled | `.tmp` write fails and is cleaned up; API returns 500 — not tested under real disk pressure |
+| Two concurrent uploads to same key | ⚠️ Untested | `File.Move(overwrite: true)` is atomic on Linux; DB upsert behavior under race not validated |
+| DB locked under concurrent writes | ⚠️ Untested | EF Core retries on `SQLITE_BUSY`; no explicit retry policy or timeout tuning |
+| Corrupt blob file with valid metadata | ❌ Not handled | Download returns corrupt bytes with 200 — no integrity check on read (ETag is stored but not verified) |
+| Backup and restore drill | ❌ Not tested | Procedure documented; never actually drilled end-to-end |
+| Large file upload (500MB+) | ⚠️ Untested | Blazor hub limit set to 500MB; streaming behavior under memory pressure unknown |
+| Delete non-existent object | ✅ Handled | Idempotent — `File.Delete` is no-op if missing; DB delete is a no-op on missing row |
+| Upload with no `Content-Type` header | ✅ Handled | Stored as `application/octet-stream` fallback |
+
+### What needs automated tests
+
+- Integration tests hitting a real SQLite DB (not mocked)
+- Upload → download round-trip with ETag verification
+- Concurrent upload stress test (same key, different keys)
+- Auth boundary tests (no key, expired key, wrong key, valid cookie vs API key)
+- Path traversal fuzzing on object keys
+- Fault injection: disk full simulation, corrupted blob detection
+
+---
 
 ## References
 

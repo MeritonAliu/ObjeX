@@ -20,4 +20,4 @@ jobs:
       - name: Health check
         run: |
           sleep 5
-          curl -f http://localhost:8080/health || (docker compose logs --tail=50 && exit 1)
+          curl -f http://localhost:8080/health/ready || (docker compose logs --tail=50 && exit 1)
