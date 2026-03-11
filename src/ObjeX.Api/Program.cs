@@ -157,7 +157,17 @@ using (var scope = app.Services.CreateScope())
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
 
     Directory.CreateDirectory(Path.GetDirectoryName(dbFilePath)!);
-    db.Database.Migrate();
+
+    var autoMigrate = builder.Configuration.GetValue<bool>("Database:AutoMigrate", defaultValue: true);
+    if (autoMigrate)
+    {
+        app.Logger.LogWarning("Running database migrations on startup. Ensure a backup exists before migrating in production. Set Database:AutoMigrate=false to disable.");
+        db.Database.Migrate();
+    }
+    else
+    {
+        app.Logger.LogInformation("Database:AutoMigrate is disabled — skipping automatic migrations.");
+    }
     
     if (await userManager.FindByNameAsync("admin") is null)
     {

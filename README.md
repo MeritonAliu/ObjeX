@@ -224,6 +224,7 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Database | `./data/db/objex.db` (relative to working directory) |
 | Blob storage | `./data/blobs` (relative to working directory) |
 | Log files | `./data/logs/objex-YYYYMMDD.log` — daily rolling, 30 days retention, compact JSON |
+| Auto-migrate | `true` — set `Database:AutoMigrate=false` to disable startup migrations |
 | Admin username | `admin` |
 | Admin email | `admin@objex.local` |
 | Admin password | `admin` |
@@ -261,6 +262,8 @@ SQLite is the right choice for single-node homelab use — zero config, no separ
 - **Sustained concurrent writes** — Hangfire polls every few seconds while EF Core writes on every upload/delete/key rotation. Under heavy parallel upload bursts this can produce `SQLITE_BUSY` retries and degraded throughput
 - **Network filesystems** — do not host `objex.db` on NFS, SMB, or any network-mounted path. SQLite uses POSIX advisory locks which are unreliable over NFS and can cause silent database corruption
 - **Not benchmarked** — no formal throughput testing has been done. If you need numbers, run your own load test against your hardware
+
+**Auto-migration:** enabled by default (`Database:AutoMigrate=true`). A warning is logged before migrations run. For production, consider setting `Database:AutoMigrate=false` and running `dotnet ef database update` as a pre-deploy step — this gives you control over when schema changes apply and lets you take a backup first (see [Backup & Restore](#backup--restore)). EF Core migrations are idempotent so a restart loop won't compound damage, but a failed migration mid-deploy will block startup until fixed.
 
 **Multi-instance:** startup migration (`db.Database.Migrate()`) is not safe for concurrent multi-instance deployments — if two processes start simultaneously, both race on schema migration. SQLite's file lock serializes this in practice but it's not a guarantee. ObjeX is single-node by design; if you ever run multiple instances, extract migrations into a dedicated pre-start step.
 
