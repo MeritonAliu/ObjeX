@@ -111,11 +111,13 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 // Resolve relative path from CWD at startup and lock it to absolute
 // so it stays stable regardless of any later CWD changes.
 string dbFilePath = Path.GetFullPath(connectionString.Replace("Data Source=", "").Trim());
-connectionString = $"Data Source={dbFilePath}";
+// Busy Timeout=5000 — SQLite spins up to 5s on SQLITE_BUSY before throwing,
+// handling contention between EF Core, Hangfire, and concurrent requests.
+connectionString = $"Data Source={dbFilePath};Busy Timeout=5000";
 
 builder.Services.AddDbContext<ObjeXDbContext>(options =>
 {
-    options.UseSqlite(connectionString);
+    options.UseSqlite(connectionString, o => o.CommandTimeout(30));
     options.UseSnakeCaseNamingConvention();
 
     if (builder.Environment.IsDevelopment())
@@ -194,6 +196,11 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogInformation("Database:AutoMigrate is disabled — skipping automatic migrations.");
     }
+
+    // Enable WAL mode and set synchronous=NORMAL — persisted to the DB file.
+    // WAL allows concurrent reads during writes; NORMAL reduces fsync overhead safely.
+    db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
+    db.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");
     
     if (await userManager.FindByNameAsync("admin") is null)
     {
