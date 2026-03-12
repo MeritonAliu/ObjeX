@@ -392,7 +392,8 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] `Content-Length` header on object downloads (enables progress bars and resumption)
 - [x] SQLite metadata store via EF Core (auto-migrated on startup)
 - [x] Content-addressable filesystem blob store (SHA256 hashed paths, 2-level nesting)
-- [x] Orphaned blob GC via Hangfire background job (weekly, results in dashboard)
+- [x] Orphaned blob GC via Hangfire background job (weekly Sunday 03:00 UTC, results in dashboard)
+- [x] Blob integrity verification via Hangfire background job (weekly Sunday 04:00 UTC — recomputes MD5 of every blob, logs corrupted/missing files)
 - [x] ASP.NET Core Identity — User model, password hashing, roles (Admin/User)
 - [x] Default admin seeded on first run
 - [x] Login/logout UI (Blazor + Radzen, username or email, toast on error)

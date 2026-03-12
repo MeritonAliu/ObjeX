@@ -16,6 +16,7 @@
 - `Hangfire.Core` + `Hangfire.AspNetCore` + `Hangfire.Storage.SQLite` (reuses `objex.db`)
 - Job classes in `ObjeX.Infrastructure/Jobs/` — no job logic in API layer
 - `CleanupOrphanedBlobsJob` — weekly Sunday 03:00 UTC, returns `CleanupResult` (checked/deleted/duration/timestamp) visible in Hangfire dashboard history
+- `VerifyBlobIntegrityJob` — weekly Sunday 04:00 UTC, recomputes MD5 of every blob and compares against stored ETag; logs errors for corrupted/missing blobs; returns `IntegrityResult`
 - Dashboard at `/hangfire` — Admin role required (localhost bypassed for dev)
 - `IMetadataService.ListAllObjectsAsync()` added for cross-bucket object enumeration
 

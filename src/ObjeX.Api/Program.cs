@@ -130,6 +130,7 @@ builder.Services.AddHangfire(config => config
     .UseSQLiteStorage(dbFilePath));
 builder.Services.AddHangfireServer();
 builder.Services.AddScoped<CleanupOrphanedBlobsJob>();
+builder.Services.AddScoped<VerifyBlobIntegrityJob>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
@@ -250,6 +251,11 @@ RecurringJob.AddOrUpdate<CleanupOrphanedBlobsJob>(
     "cleanup-orphaned-blobs",
     job => job.ExecuteAsync(),
     Cron.Weekly(DayOfWeek.Sunday, 3)); // weekly Sunday 03:00 UTC
+
+RecurringJob.AddOrUpdate<VerifyBlobIntegrityJob>(
+    "verify-blob-integrity",
+    job => job.ExecuteAsync(),
+    Cron.Weekly(DayOfWeek.Sunday, 4)); // weekly Sunday 04:00 UTC (1h after cleanup)
 
 app.MapOpenApi();
 app.MapScalarApiReference(options =>
