@@ -32,6 +32,8 @@ Open **http://localhost:8080** — log in with `admin` / `admin`.
 
 All API endpoints require authentication via **cookie session** (browser) or **API key** (external clients).
 
+> **Single-user app:** ObjeX is currently a single-admin-user system. There is no user registration UI — the only account is the admin seeded on first run. All authenticated requests have full access to all buckets and objects. There is no per-bucket ownership, no user isolation, and no per-key scope restrictions. A leaked API key means full access to everything. This is intentional for the current scope (personal homelab, single operator) and will change in Phase 4 (Bucket Permissions + User Management).
+
 ### API Key
 
 Create a key in the Settings page (`/settings`) or via the API:
@@ -195,6 +197,8 @@ Upload response:
 Create request: `{"name":"my-key","expiresInDays":365}` (omit for 10-year default)
 Create response: `{"key":"obx_...","name":"...","expiresAt":"..."}` — **key value shown once only**
 
+**Key storage:** API keys are hashed with SHA256 before storage — the database never contains the raw key. A DB leak does not expose usable keys. The first 12 characters (`KeyPrefix`, e.g. `obx_aBcDeFgH`) are stored for display in the UI.
+
 ---
 
 ## Technology Stack
@@ -225,6 +229,8 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Blob storage | `./data/blobs` (relative to working directory) |
 | Log files | `./data/logs/objex-YYYYMMDD.log` — daily rolling, 30 days retention, compact JSON |
 | Auto-migrate | `true` — set `Database:AutoMigrate=false` to disable startup migrations |
+| Max upload size | unlimited — set `Storage:MaxUploadBytes` (bytes) to cap per-upload size |
+| Min free disk | `524288000` (500MB) — uploads rejected with 507 if free space drops below this; override via `Storage:MinimumFreeDiskBytes` |
 | Admin username | `admin` |
 | Admin email | `admin@objex.local` |
 | Admin password | `admin` |
@@ -266,6 +272,8 @@ SQLite is the right choice for single-node homelab use — zero config, no separ
 **Auto-migration:** enabled by default (`Database:AutoMigrate=true`). A warning is logged before migrations run. For production, consider setting `Database:AutoMigrate=false` and running `dotnet ef database update` as a pre-deploy step — this gives you control over when schema changes apply and lets you take a backup first (see [Backup & Restore](#backup--restore)). EF Core migrations are idempotent so a restart loop won't compound damage, but a failed migration mid-deploy will block startup until fixed.
 
 **Multi-instance:** startup migration (`db.Database.Migrate()`) is not safe for concurrent multi-instance deployments — if two processes start simultaneously, both race on schema migration. SQLite's file lock serializes this in practice but it's not a guarantee. ObjeX is single-node by design; if you ever run multiple instances, extract migrations into a dedicated pre-start step.
+
+**SQLite configuration:** WAL mode (`journal_mode=WAL`), `synchronous=NORMAL`, and `busy_timeout=5000` are applied via PRAGMA on every startup and persist to the DB file. WAL enables concurrent reads during writes. `busy_timeout` makes SQLite retry internally for up to 5 seconds on lock contention before throwing `SQLITE_BUSY`. EF Core `CommandTimeout` is set to 30 seconds.
 
 **Architecture note:** Hangfire, EF Core (metadata + Identity), and the app all share one `objex.db` file. Separating Hangfire onto its own SQLite file or an in-memory store is a future improvement. For now, the weekly cleanup job is the only significant Hangfire write activity.
 
@@ -359,6 +367,8 @@ ObjeX sets the following headers on every response:
 
 Content Security Policy (CSP) is not yet set — Blazor Server requires inline scripts and a `ws://` WebSocket connection for SignalR, making a safe policy non-trivial. Deferred to a future hardening pass.
 
+**Rate limiting:** `POST /account/login` is limited to 5 attempts per 2 minutes per IP (sliding window) — returns 429 when exceeded. `POST /api/keys` is limited to 10 per minute per IP. Rate limiting is IP-based via `RemoteIpAddress` — if you run ObjeX behind a reverse proxy, ensure `X-Forwarded-For` is correctly forwarded, otherwise the limiter sees the proxy IP and may block all users simultaneously.
+
 **CORS:** ObjeX allows any origin (`AllowAnyOrigin`). This is intentional for self-hosted use where the origin isn't known upfront. Browsers block `AllowAnyOrigin` + `AllowCredentials` simultaneously, so cookie sessions are safe. If you add `AllowCredentials()` in the future, you must also restrict to explicit origins — the wildcard + credentials combination is rejected by browsers and would need to be replaced.
 
 ### Blob Layout on Disk
@@ -409,6 +419,9 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Security audit logs — failed logins, invalid/expired API keys, object/bucket deletes, API key create/delete
 - [x] Daily rolling log files — compact JSON to `./data/logs/`, 30-day retention (Filebeat/Promtail compatible)
 - [x] Response compression
+- [x] Upload size limit — unlimited by default, configurable via `Storage:MaxUploadBytes`
+- [x] Disk space guard — rejects uploads with 507 if free space < 500MB (configurable via `Storage:MinimumFreeDiskBytes`)
+- [x] Rate limiting — `POST /account/login`: 5 attempts per 2 min per IP (sliding window); `POST /api/keys`: 10 per min per IP
 
 ---
 

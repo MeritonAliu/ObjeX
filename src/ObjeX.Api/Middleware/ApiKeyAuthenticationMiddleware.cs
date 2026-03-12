@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
+using ObjeX.Core.Models;
 using ObjeX.Infrastructure.Data;
 
 namespace ObjeX.Api.Middleware;
@@ -19,9 +20,10 @@ public class ApiKeyAuthenticationMiddleware(RequestDelegate next, ILogger<ApiKey
         if (!string.IsNullOrEmpty(apiKeyHeader))
         {
             var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+            var keyHash = ApiKey.HashKey(apiKeyHeader);
             var apiKey = await db.ApiKeys
                 .Include(k => k.User)
-                .FirstOrDefaultAsync(k => k.Key == apiKeyHeader);
+                .FirstOrDefaultAsync(k => k.Key == keyHash);
 
             if (apiKey is null)
             {

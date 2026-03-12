@@ -31,7 +31,7 @@ public static class AccountEndpoints
             var qs = $"error=1&login={Uri.EscapeDataString(login)}";
             if (!string.IsNullOrEmpty(returnUrl)) qs += $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
             return Results.Redirect($"/login?{qs}");
-        }).DisableAntiforgery();
+        }).DisableAntiforgery().RequireRateLimiting("login");
 
         app.MapGet("/account/logout", async (SignInManager<User> signInManager) =>
         {

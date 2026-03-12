@@ -17,7 +17,7 @@ src/
 ├── ObjeX.Infrastructure/
 │   ├── Data/            # ObjeXDbContext (EF Core + SQLite, extends IdentityDbContext<User>)
 │   ├── Hashing/         # Sha256HashService
-│   ├── Jobs/            # CleanupOrphanedBlobsJob (Hangfire job classes)
+│   ├── Jobs/            # CleanupOrphanedBlobsJob, VerifyBlobIntegrityJob (Hangfire job classes)
 │   ├── Metadata/        # SqliteMetadataService
 │   ├── Migrations/      # EF Core migrations
 │   └── Storage/         # FileSystemStorageService
@@ -139,7 +139,8 @@ All pages using `MainLayout` are protected via `<AuthorizeView>` in `MainLayout.
 ```csharp
 public class ApiKey : IHasTimestamps {
     public Guid Id { get; init; } = Guid.NewGuid();
-    public string Key { get; init; } = GenerateKey(); // auto-generated, "obx_" prefix + 32 random bytes base64
+    public string Key { get; set; } = string.Empty;       // SHA256 hash of the raw key — never the raw key
+    public string KeyPrefix { get; set; } = string.Empty; // first 12 chars of raw key for UI display
     public required string Name { get; set; }
     public required string UserId { get; set; }
     public User? User { get; set; }
@@ -150,7 +151,11 @@ public class ApiKey : IHasTimestamps {
 }
 ```
 
-`Key` uses `init` with a default expression (`= GenerateKey()`) — this auto-generates on construction, so `Key` is not a `required` field. EF Core is told `.ValueGeneratedNever()` for both `Id` and `Key`.
+**Key generation:** use `ApiKey.Create(name, userId, expiresAt)` — returns `(ApiKey entity, string plainText)`. The plaintext key is returned to the caller once and never stored. `Key` stores `SHA256(plainText)`. `KeyPrefix` stores the first 12 chars for display.
+
+**Auth middleware:** hashes the incoming `X-API-Key` header value with `ApiKey.HashKey()` and looks up by hash. Raw keys never touch the DB.
+
+EF Core is told `.ValueGeneratedNever()` for `Id` and `Key`.
 
 ### API Key Endpoints (`ObjeX.Api/Endpoints/ApiKeyEndpoints.cs`)
 
@@ -187,8 +192,10 @@ builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService
 | Job class | Location | Schedule | Return type | What it does |
 |---|---|---|---|---|
 | `CleanupOrphanedBlobsJob` | `Infrastructure/Jobs/` | Weekly Sun 03:00 UTC | `Task<CleanupResult>` | Queries all known `StoragePath` values from metadata, scans `*.blob` files on disk, deletes any not in the known set |
+| `VerifyBlobIntegrityJob` | `Infrastructure/Jobs/` | Weekly Sun 04:00 UTC | `Task<IntegrityResult>` | Reads every blob file, recomputes MD5, compares against stored ETag — logs errors for corrupted or missing blobs |
 
-`CleanupResult` (record, defined in same file): `FilesChecked`, `FilesDeleted`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
+`CleanupResult` (record, defined in same file): `FilesChecked`, `FilesDeleted`, `DurationSeconds`, `Timestamp`.
+`IntegrityResult` (record, defined in same file): `Checked`, `Corrupted`, `Missing`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
 
 `FileSystemStorageService.BasePath` is `internal` — accessible to jobs in the same `ObjeX.Infrastructure` assembly, not visible outside.
 

@@ -14,22 +14,18 @@ public static class ApiKeyEndpoints
         group.MapPost("/", async (HttpContext ctx, ObjeXDbContext db, CreateApiKeyRequest req, ILogger<ApiKey> logger) =>
         {
             var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var expiresAt = req.ExpiresInDays.HasValue
+                ? DateTime.UtcNow.AddDays(req.ExpiresInDays.Value)
+                : DateTime.UtcNow.AddYears(10);
 
-            var apiKey = new ApiKey
-            {
-                Name = req.Name,
-                UserId = userId!,
-                ExpiresAt = req.ExpiresInDays.HasValue
-                    ? DateTime.UtcNow.AddDays(req.ExpiresInDays.Value)
-                    : DateTime.UtcNow.AddYears(10)
-            };
+            var (apiKey, plainText) = ApiKey.Create(req.Name, userId!, expiresAt);
 
             db.ApiKeys.Add(apiKey);
             await db.SaveChangesAsync();
             logger.LogInformation("API key created: {KeyName} by {UserId}", apiKey.Name, userId);
 
-            return Results.Ok(new { apiKey.Key, apiKey.Name, apiKey.ExpiresAt });
-        });
+            return Results.Ok(new { key = plainText, apiKey.Name, apiKey.ExpiresAt });
+        }).RequireRateLimiting("key-create");
 
         group.MapGet("/", async (HttpContext ctx, ObjeXDbContext db) =>
         {
@@ -37,7 +33,7 @@ public static class ApiKeyEndpoints
             var keys = await db.ApiKeys
                 .Where(k => k.UserId == userId)
                 .OrderByDescending(k => k.CreatedAt)
-                .Select(k => new { k.Id, k.Name, k.ExpiresAt, k.LastUsedAt, k.CreatedAt })
+                .Select(k => new { k.Id, k.Name, k.KeyPrefix, k.ExpiresAt, k.LastUsedAt, k.CreatedAt })
                 .ToListAsync();
 
             return Results.Ok(keys);

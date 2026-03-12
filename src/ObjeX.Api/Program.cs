@@ -2,6 +2,7 @@ using Hangfire;
 using Hangfire.Storage.SQLite;
 
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 using ObjeX.Api.Auth;
@@ -22,6 +23,11 @@ using Scalar.AspNetCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Upload size limit — null = unlimited (disk space guard is the real protection).
+// Override via Storage:MaxUploadBytes in config.
+var maxUploadBytes = builder.Configuration.GetValue<long?>("Storage:MaxUploadBytes");
+builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxUploadBytes);
 
 builder.Services.AddScoped<IMetadataService, SqliteMetadataService>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
@@ -114,7 +120,7 @@ connectionString = $"Data Source={dbFilePath}";
 
 builder.Services.AddDbContext<ObjeXDbContext>(options =>
 {
-    options.UseSqlite(connectionString);
+    options.UseSqlite(connectionString, o => o.CommandTimeout(30));
     options.UseSnakeCaseNamingConvention();
 
     if (builder.Environment.IsDevelopment())
@@ -150,6 +156,30 @@ builder.Services.AddCors(options =>
     });
 });
 
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // Login: 5 attempts per 2 minutes per IP — brute-force protection
+    options.AddSlidingWindowLimiter("login", o =>
+    {
+        o.Window = TimeSpan.FromMinutes(2);
+        o.SegmentsPerWindow = 4;
+        o.PermitLimit = 5;
+        o.QueueLimit = 0;
+        o.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.NewestFirst;
+    });
+
+    // API key creation: 10 per minute per IP — sensitive write
+    options.AddFixedWindowLimiter("key-create", o =>
+    {
+        o.Window = TimeSpan.FromMinutes(1);
+        o.PermitLimit = 10;
+        o.QueueLimit = 0;
+        o.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.NewestFirst;
+    });
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -169,6 +199,13 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogInformation("Database:AutoMigrate is disabled — skipping automatic migrations.");
     }
+
+    // Enable WAL mode, synchronous=NORMAL, and busy_timeout — persisted to the DB file.
+    // WAL allows concurrent reads during writes; NORMAL reduces fsync overhead safely.
+    // busy_timeout retries for 5s on SQLITE_BUSY before throwing.
+    db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
+    db.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");
+    db.Database.ExecuteSqlRaw("PRAGMA busy_timeout=5000;");
     
     if (await userManager.FindByNameAsync("admin") is null)
     {
@@ -208,6 +245,7 @@ app.UseWhen(
     branch => branch.UseStatusCodePagesWithReExecute("/not-found"));
 app.UseStaticFiles();
 app.UseCors();
+app.UseRateLimiter();
 app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";

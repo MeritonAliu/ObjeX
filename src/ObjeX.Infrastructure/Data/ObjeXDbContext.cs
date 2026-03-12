@@ -43,6 +43,7 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
             entity.HasKey(e => e.Id);
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Key).ValueGeneratedNever();
+            entity.Property(e => e.KeyPrefix).IsRequired();
             entity.HasIndex(e => e.Key).IsUnique();
             entity.HasOne(e => e.User)
                 .WithMany()

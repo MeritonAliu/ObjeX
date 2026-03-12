@@ -5,6 +5,7 @@ using ObjeX.Core.Interfaces;
 using ObjeX.Core.Models;
 using ObjeX.Core.Utilities;
 using ObjeX.Core.Validation;
+using ObjeX.Infrastructure.Storage;
 
 namespace ObjeX.Api.Endpoints;
 
@@ -19,11 +20,17 @@ public static class ObjectEndpoints
             string bucketName,
             string key,
             HttpRequest request,
+            IConfiguration config,
             IMetadataService metadata,
-            IObjectStorageService storage) =>
+            IObjectStorageService storage,
+            FileSystemStorageService fs) =>
         {
             if (ObjectKeyValidator.GetValidationError(key) is string keyError)
                 return Results.BadRequest(new { error = keyError });
+
+            var minFreeBytes = config.GetValue<long>("Storage:MinimumFreeDiskBytes", 500 * 1024 * 1024); // 500MB default
+            if (fs.GetAvailableFreeSpace() < minFreeBytes)
+                return Results.Problem("Insufficient disk space", statusCode: StatusCodes.Status507InsufficientStorage);
 
             if (!await metadata.ExistsBucketAsync(bucketName))
                 return Results.NotFound(new { error = "Bucket not found" });
