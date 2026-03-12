@@ -41,9 +41,6 @@
             <RadzenDataGrid Data="@_keys" TItem="ApiKey" AllowSorting="true" EmptyText="No API keys yet.">
                 <Columns>
                     <RadzenDataGridColumn TItem="ApiKey" Property="Name" Title="Name" />
-                    <RadzenDataGridColumn TItem="ApiKey" Property="KeyPrefix" Title="Prefix">
-                        <Template Context="key"><code>@(key.KeyPrefix)...</code></Template>
-                    </RadzenDataGridColumn>
                     <RadzenDataGridColumn TItem="ApiKey" Property="CreatedAt" Title="Created"
                                          FormatString="{0:yyyy-MM-dd}" />
                     <RadzenDataGridColumn TItem="ApiKey" Property="ExpiresAt" Title="Expires">
@@ -113,11 +110,14 @@
         var result = await DialogService.OpenAsync<CreateApiKeyDialog>("Create API Key");
         if (result is not CreateApiKeyDialog.CreateApiKeyDialogResult req) return;
 
-        var expiresAt = req.ExpiresInDays.HasValue
-            ? DateTime.UtcNow.AddDays(req.ExpiresInDays.Value)
-            : DateTime.UtcNow.AddYears(10);
-
-        var (key, plainText) = ApiKey.Create(req.Name, _userId, expiresAt);
+        var key = new ApiKey
+        {
+            Name = req.Name,
+            UserId = _userId,
+            ExpiresAt = req.ExpiresInDays.HasValue
+                ? DateTime.UtcNow.AddDays(req.ExpiresInDays.Value)
+                : DateTime.UtcNow.AddYears(10)
+        };
 
         Db.ApiKeys.Add(key);
         await Db.SaveChangesAsync();
@@ -125,7 +125,7 @@
 
         await DialogService.OpenAsync<ShowApiKeyDialog>(
             "API Key Created",
-            new Dictionary<string, object?> { { "ApiKey", plainText } },
+            new Dictionary<string, object?> { { "ApiKey", key.Key } },
             new DialogOptions { CloseDialogOnOverlayClick = false, ShowClose = false });
     }
 

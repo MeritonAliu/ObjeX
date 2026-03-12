@@ -24,11 +24,6 @@ using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Upload size limit — null = unlimited (disk space guard is the real protection).
-// Override via Storage:MaxUploadBytes in config.
-var maxUploadBytes = builder.Configuration.GetValue<long?>("Storage:MaxUploadBytes");
-builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxUploadBytes);
-
 builder.Services.AddScoped<IMetadataService, SqliteMetadataService>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
 builder.Services.AddSingleton<FileSystemStorageService>(sp =>
@@ -120,7 +115,7 @@ connectionString = $"Data Source={dbFilePath}";
 
 builder.Services.AddDbContext<ObjeXDbContext>(options =>
 {
-    options.UseSqlite(connectionString, o => o.CommandTimeout(30));
+    options.UseSqlite(connectionString);
     options.UseSnakeCaseNamingConvention();
 
     if (builder.Environment.IsDevelopment())
@@ -199,13 +194,6 @@ using (var scope = app.Services.CreateScope())
     {
         app.Logger.LogInformation("Database:AutoMigrate is disabled — skipping automatic migrations.");
     }
-
-    // Enable WAL mode, synchronous=NORMAL, and busy_timeout — persisted to the DB file.
-    // WAL allows concurrent reads during writes; NORMAL reduces fsync overhead safely.
-    // busy_timeout retries for 5s on SQLITE_BUSY before throwing.
-    db.Database.ExecuteSqlRaw("PRAGMA journal_mode=WAL;");
-    db.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");
-    db.Database.ExecuteSqlRaw("PRAGMA busy_timeout=5000;");
     
     if (await userManager.FindByNameAsync("admin") is null)
     {

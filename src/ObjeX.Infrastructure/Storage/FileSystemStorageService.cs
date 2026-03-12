@@ -103,9 +103,6 @@ public class FileSystemStorageService : IObjectStorageService
         return Task.FromResult(new FileInfo(filePath).Length);
     }
 
-    public long GetAvailableFreeSpace() =>
-        new DriveInfo(BasePath).AvailableFreeSpace;
-
     // TODO: Future — content-based deduplication: hash the file bytes instead of bucket+key,
     //       store once, reference via a content-addressed path, and track ref-counts in metadata.
 

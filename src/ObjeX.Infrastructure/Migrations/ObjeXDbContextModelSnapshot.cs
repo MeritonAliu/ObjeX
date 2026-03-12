@@ -15,7 +15,7 @@ namespace ObjeX.Infrastructure.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
 
             modelBuilder.Entity("Microsoft.AspNetCore.Identity.IdentityRole", b =>
                 {
@@ -195,11 +195,6 @@ namespace ObjeX.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT")
                         .HasColumnName("key");
-
-                    b.Property<string>("KeyPrefix")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("key_prefix");
 
                     b.Property<DateTime?>("LastUsedAt")
                         .HasColumnType("TEXT")
