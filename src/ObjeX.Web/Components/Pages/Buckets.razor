@@ -18,7 +18,7 @@
         <Columns>
             <RadzenDataGridColumn TItem="Bucket" Property="Name" Title="Name">
                 <Template Context="bucket">
-                    <RadzenLink Path="@($"/buckets/{bucket.Name}")" Text="@bucket.Name" />
+                    <a href="/buckets/@bucket.Name" style="color:var(--rz-primary);text-decoration:none">@bucket.Name</a>
                 </Template>
             </RadzenDataGridColumn>
             <RadzenDataGridColumn TItem="Bucket" Property="ObjectCount" Title="Objects" />

@@ -1,0 +1,30 @@
+# Build artifacts
+src/**/bin/
+src/**/obj/
+
+# Data (never send live db/blobs into image)
+data/
+
+# Git
+.git/
+.gitignore
+
+# IDE / OS
+.vs/
+.vscode/
+.idea/
+**/.DS_Store
+**/Thumbs.db
+
+# Docker itself
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Logs
+logs/
+*.log
+
+# Secrets / local config
+**/appsettings.Development.json
+**/*.user

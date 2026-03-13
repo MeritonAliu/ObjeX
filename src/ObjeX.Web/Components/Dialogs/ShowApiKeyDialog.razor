@@ -1,14 +1,23 @@
 @inject DialogService DialogService
+@inject IJSRuntime JS
 
-<RadzenStack Gap="1rem">
+<RadzenStack Gap="1rem" @onkeydown="@(e => { if (e.Key is "Enter" or "Escape") DialogService.Close(null); })" tabindex="-1">
     <RadzenText TextStyle="TextStyle.Body1">
         Copy your new API key now — it won't be shown again.
     </RadzenText>
 
-    <code style="word-break:break-all; font-size:0.875rem; display:block; padding:0.75rem;
-                 background:var(--rz-base-200); border-radius:4px; line-height:1.6">
-        @ApiKey
-    </code>
+    <div style="position:relative">
+        <code style="word-break:break-all; font-size:0.875rem; display:block; padding:0.75rem 3rem 0.75rem 0.75rem;
+                     background:var(--rz-base-200); border-radius:4px; line-height:1.6">
+            @ApiKey
+        </code>
+        <RadzenButton Icon="@(_copied ? "check" : "content_copy")"
+                      ButtonStyle="@(_copied ? ButtonStyle.Success : ButtonStyle.Light)"
+                      Variant="Variant.Text"
+                      Size="ButtonSize.Small"
+                      Click="@CopyToClipboard"
+                      Style="position:absolute;top:0.25rem;right:0.25rem" />
+    </div>
 
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End">
         <RadzenButton Text="Done" ButtonStyle="ButtonStyle.Primary" Click="@(() => DialogService.Close(null))" />
@@ -17,4 +26,15 @@
 
 @code {
     [Parameter] public string ApiKey { get; set; } = string.Empty;
+    bool _copied;
+
+    async Task CopyToClipboard()
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", ApiKey);
+        _copied = true;
+        StateHasChanged();
+        await Task.Delay(2000);
+        _copied = false;
+        StateHasChanged();
+    }
 }

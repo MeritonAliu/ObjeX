@@ -4,6 +4,7 @@
 <RadzenStack Gap="1rem">
     <RadzenFormField Text="Bucket Name">
         <input @oninput="OnInput"
+               @onkeydown="OnKeyDown"
                placeholder="my-bucket"
                class="rz-textbox"
                style="width: 100%" />
@@ -37,4 +38,12 @@
     }
 
     void OnCreate() => DialogService.Close(_name.Trim());
+
+    void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _error is null && !string.IsNullOrWhiteSpace(_name))
+            OnCreate();
+        else if (e.Key == "Escape")
+            DialogService.Close(null);
+    }
 }

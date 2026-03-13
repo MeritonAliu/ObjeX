@@ -3,6 +3,7 @@
 <RadzenStack Gap="1rem">
     <RadzenFormField Text="Key Name">
         <input @oninput="@(e => _name = e.Value?.ToString() ?? string.Empty)"
+               @onkeydown="OnKeyDown"
                placeholder="e.g. my-app"
                class="rz-textbox"
                style="width:100%" />
@@ -24,6 +25,14 @@
     int? _expiresInDays;
 
     void OnCreate() => DialogService.Close(new CreateApiKeyDialogResult(_name.Trim(), _expiresInDays));
+
+    void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !string.IsNullOrWhiteSpace(_name))
+            OnCreate();
+        else if (e.Key == "Escape")
+            DialogService.Close(null);
+    }
 
     public record CreateApiKeyDialogResult(string Name, int? ExpiresInDays);
 }
