@@ -48,6 +48,11 @@ jobs:
           mkdir -p ~/objex-live/data/db
           mkdir -p ~/objex-live/data/blobs
 
+      - name: Cleanup build artifacts
+        run: |
+          rm -rf ./publish
+          dotnet nuget locals http-cache --clear
+
       - name: Start ObjeX (detached)
         run: |
           cd ~/objex-live
