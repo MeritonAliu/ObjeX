@@ -26,8 +26,8 @@ builder.Services.AddScoped<IMetadataService, SqliteMetadataService>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
 builder.Services.AddSingleton<FileSystemStorageService>(sp =>
 {
-    var basePath = builder.Configuration["Storage:BasePath"]
-                   ?? Path.Combine(builder.Environment.ContentRootPath, "..", "..", "data", "blobs");
+    var basePath = builder.Configuration["Storage:BasePath"] ?? "./data/blobs";
+    basePath = Path.GetFullPath(basePath);
     return new FileSystemStorageService(basePath, sp.GetRequiredService<IHashService>());
 });
 builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService<FileSystemStorageService>());
@@ -102,21 +102,12 @@ builder.Services.ConfigureApplicationCookie(options =>
 });
 
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-string dbFilePath;
-if (string.IsNullOrEmpty(connectionString))
-{
-    var currentDir = new DirectoryInfo(builder.Environment.ContentRootPath);
-    var solutionRoot = currentDir.Parent?.Parent?.FullName
-                      ?? Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", ".."));
-    dbFilePath = Path.Combine(solutionRoot, "objex.db");
-    connectionString = $"Data Source={dbFilePath}";
-}
-else
-{
-    // Extract file path from "Data Source=..." connection string for Hangfire
-    dbFilePath = connectionString.Replace("Data Source=", "").Trim();
-}
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+                       ?? "Data Source=./data/db/objex.db";
+// Resolve relative path from CWD at startup and lock it to absolute
+// so it stays stable regardless of any later CWD changes.
+string dbFilePath = Path.GetFullPath(connectionString.Replace("Data Source=", "").Trim());
+connectionString = $"Data Source={dbFilePath}";
 
 builder.Services.AddDbContext<ObjeXDbContext>(options =>
 {
@@ -159,7 +150,8 @@ using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<ObjeXDbContext>();
     var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-    
+
+    Directory.CreateDirectory(Path.GetDirectoryName(dbFilePath)!);
     db.Database.Migrate();
     
     if (await userManager.FindByNameAsync("admin") is null)
