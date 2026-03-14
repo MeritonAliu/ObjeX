@@ -357,8 +357,6 @@ ObjeX sets the following headers on every response:
 
 | Header | Value |
 |--------|-------|
-| `Server` | *(removed — Kestrel default suppressed via `AddServerHeader = false`)* |
-| `X-Powered-By` | *(removed)* |
 | `X-Content-Type-Options` | `nosniff` |
 | `X-Frame-Options` | `DENY` |
 | `X-Permitted-Cross-Domain-Policies` | `none` |

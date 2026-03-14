@@ -70,8 +70,6 @@ Set in a raw `app.Use` middleware in `Program.cs` (after `UseCors`, before auth)
 
 | Header | Value | Condition |
 |--------|-------|-----------|
-| `Server` | removed | `AddServerHeader = false` on Kestrel |
-| `X-Powered-By` | removed | `ctx.Response.Headers.Remove(...)` |
 | `X-Content-Type-Options` | `nosniff` | always |
 | `X-Frame-Options` | `DENY` | always |
 | `X-Permitted-Cross-Domain-Policies` | `none` | always |
@@ -337,13 +335,7 @@ External S3 clients → HTTP → ObjeX.Api endpoints → same services
 
 **Dialogs:** Use `DialogService.OpenAsync<TComponent>("Title")` — returns the value passed to `DialogService.Close(value)`, or `null` if cancelled. Always null-check the return before acting on it. For complex return types, define a nested `public record` inside the dialog's `@code` block and reference it as `DialogComponent.RecordType` from the caller. Use `OpenAsync` (not `Alert`) when the dialog body needs rendered HTML — `Alert` renders plain text only.
 
-Keyboard handling: text-input dialogs (`CreateBucketDialog`, `CreateApiKeyDialog`) bind `@onkeydown` on the `<input>` — Enter submits (if valid), Escape cancels. `ShowApiKeyDialog` binds `@onkeydown` on the container `<RadzenStack tabindex="-1">`. `CreateFolderDialog` follows the same pattern. Do NOT rely on Radzen's built-in Enter-to-submit — it doesn't exist.
-
-`ShowApiKeyDialog` has a copy-to-clipboard button (Material `content_copy` icon) overlaid on the key code block. On click it calls `navigator.clipboard.writeText` via JS interop, then switches to a `check` icon for 2 seconds. The dialog has `CloseDialogOnOverlayClick = false, ShowClose = false` — user must click Done.
-
 **File downloads are the exception to "no API calls from Blazor":** Blazor Server runs on the server and cannot push file bytes to the browser's download manager through SignalR. Download buttons use a plain `<a href="/api/objects/..." download>` pointing at the API endpoint. This is not an architecture violation — it's a browser constraint.
-
-**Clickable links in grids:** Use `<a href="..." style="color:var(--rz-primary);text-decoration:none">` — do NOT use `<RadzenLink>` which renders red in the Material theme. This applies to bucket name links in `Buckets.razor` and `Dashboard.razor`.
 
 **Virtual folder navigation:** `Objects.razor` tracks `_currentPrefix` (e.g. `"photos/2024/"`) as component state. Calls `ListObjectsAsync` with `delimiter: "/"` — folders render as clickable rows, files as regular rows in a unified `RadzenDataGrid`. Breadcrumb segments are `<span @onclick>` (not `RadzenLink`) to avoid full-page navigation. Folder create writes a zero-byte placeholder object with key `prefix/` and `ContentType: application/x-directory`. Upload prepends `_currentPrefix` to the file name. Placeholder objects (key ends with `/`) are filtered from file rows.
 
@@ -420,8 +412,6 @@ Two workflows in `.github/workflows/`:
 - Start: `screen -dmS objex dotnet ObjeX.Api.dll --urls "http://0.0.0.0:8080"` — runs detached in a `screen` session named `objex`
 
 To check the running instance on the VM: `screen -r objex` (detach with Ctrl+A D).
-
-**`.dockerignore`** is present at repo root. It excludes `src/**/bin/`, `src/**/obj/`, `data/`, `.git/`, IDE folders, and local config overrides (`appsettings.Development.json`). Without it, `docker build` would send ~230MB of build artifacts as context on every build.
 
 ---
 
