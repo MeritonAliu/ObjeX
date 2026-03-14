@@ -156,13 +156,44 @@
 
 ---
 
-## Phase 5 — Storage Extensibility
+## Phase 5 — Testing & Hardening
 
-### 11. Storage Backends
+### 13. Automated Test Suite
+
+CI is currently build-only. Before production-ready claim, need:
+
+**Integration tests (real SQLite, no mocks):**
+- Upload → download round-trip with ETag verification
+- Upload → delete → confirm 404
+- Bucket CRUD lifecycle
+- Auth boundary: no key, expired key, wrong key, valid cookie, valid API key
+- Path traversal fuzzing on object keys (`../`, `..\\`, URL-encoded variants)
+- Concurrent uploads to same key (race condition validation)
+- Large file streaming (500MB+)
+
+**Fault injection:**
+- Disk full mid-upload — confirm `.tmp` cleaned, 500 returned, no partial state
+- Corrupt blob file — current: returns corrupt bytes with 200; target: detect via ETag mismatch on read
+- Missing blob with valid metadata — confirm 404, not 500
+- `SQLITE_BUSY` simulation under concurrent write load
+
+**Operational:**
+- Backup and restore drill — stop, backup, wipe, restore, verify `/health/ready` + spot-check downloads
+- Hangfire GC job triggered manually — verify orphaned blobs removed, metadata-backed blobs untouched
+
+### 14. ETag Verification on Read
+
+Currently ETag is computed on upload and stored, but never checked on download. A corrupt or partially-overwritten blob file returns 200 with bad bytes. Fix: re-hash on read and compare; return 500 with a clear error if mismatch.
+
+---
+
+## Phase 7 — Storage Extensibility
+
+### 15. Storage Backends
 - Implement additional `IObjectStorageService` backends (cloud, chunked, etc.)
 - Swap in without changing any other layer
 
-### 12. PostgreSQL Support
+### 16. PostgreSQL Support
 - Swap SQLite for PostgreSQL via same `IMetadataService` interface
 - Configuration-driven backend selection
 

@@ -443,6 +443,39 @@ Data layout on the dev VM:
     └── blobs/          # blob files (preserved by rsync --exclude)
 ```
 
+## Testing
+
+**Current state:** CI is build-only — no automated tests exist yet. The scenarios below are the known gaps before ObjeX can be considered production-ready.
+
+### Hostile Scenario Coverage
+
+| Scenario | Status | How it's handled |
+|----------|--------|-----------------|
+| Power loss mid-upload | ✅ Handled | Atomic write: `.tmp` → `File.Move`; stale `.tmp` cleaned on startup |
+| Crash between blob write and metadata commit | ✅ Handled | Orphaned blob cleaned by weekly Hangfire GC |
+| Path traversal in object key (`../../../etc/passwd`) | ✅ Handled | `SanitizeKey` strips `..` and normalises `\` → `/`; hashed paths never touch filesystem raw |
+| Expired API key attempt | ✅ Handled | Middleware checks `ExpiresAt`, returns 401 |
+| Missing blob file with valid metadata | ✅ Handled | `RetrieveAsync` throws `FileNotFoundException` → 404 |
+| Disk full during upload | ⚠️ Partially handled | `.tmp` write fails and is cleaned up; API returns 500 — not tested under real disk pressure |
+| Two concurrent uploads to same key | ⚠️ Untested | `File.Move(overwrite: true)` is atomic on Linux; DB upsert behavior under race not validated |
+| DB locked under concurrent writes | ⚠️ Untested | EF Core retries on `SQLITE_BUSY`; no explicit retry policy or timeout tuning |
+| Corrupt blob file with valid metadata | ❌ Not handled | Download returns corrupt bytes with 200 — no integrity check on read (ETag is stored but not verified) |
+| Backup and restore drill | ❌ Not tested | Procedure documented; never actually drilled end-to-end |
+| Large file upload (500MB+) | ⚠️ Untested | Blazor hub limit set to 500MB; streaming behavior under memory pressure unknown |
+| Delete non-existent object | ✅ Handled | Idempotent — `File.Delete` is no-op if missing; DB delete is a no-op on missing row |
+| Upload with no `Content-Type` header | ✅ Handled | Stored as `application/octet-stream` fallback |
+
+### What needs automated tests
+
+- Integration tests hitting a real SQLite DB (not mocked)
+- Upload → download round-trip with ETag verification
+- Concurrent upload stress test (same key, different keys)
+- Auth boundary tests (no key, expired key, wrong key, valid cookie vs API key)
+- Path traversal fuzzing on object keys
+- Fault injection: disk full simulation, corrupted blob detection
+
+---
+
 ## References
 
 - [MinIO](https://github.com/minio/minio) — patterns reference
