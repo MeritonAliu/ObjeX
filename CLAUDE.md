@@ -17,7 +17,7 @@ src/
 ├── ObjeX.Infrastructure/
 │   ├── Data/            # ObjeXDbContext (EF Core + SQLite, extends IdentityDbContext<User>)
 │   ├── Hashing/         # Sha256HashService
-│   ├── Jobs/            # CleanupOrphanedBlobsJob (Hangfire job classes)
+│   ├── Jobs/            # CleanupOrphanedBlobsJob, VerifyBlobIntegrityJob (Hangfire job classes)
 │   ├── Metadata/        # SqliteMetadataService
 │   ├── Migrations/      # EF Core migrations
 │   └── Storage/         # FileSystemStorageService
@@ -192,8 +192,10 @@ builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService
 | Job class | Location | Schedule | Return type | What it does |
 |---|---|---|---|---|
 | `CleanupOrphanedBlobsJob` | `Infrastructure/Jobs/` | Weekly Sun 03:00 UTC | `Task<CleanupResult>` | Queries all known `StoragePath` values from metadata, scans `*.blob` files on disk, deletes any not in the known set |
+| `VerifyBlobIntegrityJob` | `Infrastructure/Jobs/` | Weekly Sun 04:00 UTC | `Task<IntegrityResult>` | Reads every blob file, recomputes MD5, compares against stored ETag — logs errors for corrupted or missing blobs |
 
-`CleanupResult` (record, defined in same file): `FilesChecked`, `FilesDeleted`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
+`CleanupResult` (record, defined in same file): `FilesChecked`, `FilesDeleted`, `DurationSeconds`, `Timestamp`.
+`IntegrityResult` (record, defined in same file): `Checked`, `Corrupted`, `Missing`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
 
 `FileSystemStorageService.BasePath` is `internal` — accessible to jobs in the same `ObjeX.Infrastructure` assembly, not visible outside.
 
