@@ -32,6 +32,32 @@
 - **CI** (`ci.yml`) — triggers on push to `main` and all PRs; runs on `ubuntu-latest`; restore → build Release; fails fast on compile errors; no tests yet
 - **CD** (`cd.yml`) — triggers on push to `main` and manual dispatch; runs on self-hosted runner (labels: `objex`, `cd`, `dev`); builds Debug with `ASPNETCORE_ENVIRONMENT=Development`; stops running instance with `pkill`, deploys to `~/objex-live/` via `rsync --exclude='data/'` (data directories preserved across deploys), starts app in a `screen` session (`screen -dmS objex dotnet ObjeX.Api.dll`)
 
+### Dockerize ✅
+- Multi-stage Dockerfile (SDK build → ASP.NET runtime)
+- Multi-arch via `--platform=$BUILDPLATFORM` + `$TARGETARCH`
+- `docker-compose.yml` with named volume for `/data`
+- Environment variables for connection string and blob path baked into image defaults
+
+### Virtual Folder Navigation ✅
+- `ListObjectsResult` record in `ObjeX.Core/Models/` — `Objects` + `CommonPrefixes`
+- `IMetadataService.ListObjectsAsync` accepts optional `prefix` and `delimiter` — prefix filter pushed to DB (`LIKE`), delimiter grouping in C#
+- API list endpoint accepts `?prefix=&delimiter=` query params; returns `{ objects, commonPrefixes }`
+- `GET /api/objects/{bucket}/download?prefix=` — streams ZIP of all objects under a prefix
+- Blazor `Objects.razor` — unified file+folder grid, breadcrumb, New Folder button, folder delete (recursive), folder ZIP download, upload into current prefix
+- Placeholder objects (key ends with `/`, `ContentType: application/x-directory`) used for empty folders; filtered from file rows in UI
+
+### Dark Mode ✅
+- System preference detected via `prefers-color-scheme` on first visit (inline `<script>` in `<head>`)
+- Cookie `objex-theme` persists choice across sessions
+- `App.razor` reads cookie server-side via `IHttpContextAccessor` → passes to `<RadzenTheme>` — no flash on load
+- `ThemeService` (Radzen) registered as `AddScoped<ThemeService>()` — drives client-side switching
+- Toggle (`RadzenSwitch`) in Settings page; initial state read from cookie via JS in `OnAfterRenderAsync`
+
+### Atomic Blob Writes ✅
+- `FileSystemStorageService.StoreAsync` writes to `{hash}.blob.tmp` then `File.Move(..., overwrite: true)` — atomic on Linux
+- On exception, `.tmp` file deleted in `catch` — final path never touched
+- Startup cleanup: `.tmp` files older than 1 hour deleted automatically, count logged
+
 ### Authentication & Authorization ✅
 - **ASP.NET Core Identity** — `User` extends `IdentityUser`, `ObjeXDbContext` extends `IdentityDbContext<User>`
 - **Roles** — `Admin` and `User` seeded on first startup
@@ -48,15 +74,7 @@
 
 ---
 
-## Phase 1 — Infrastructure
-
-### 1. Dockerization
-- Multi-stage Dockerfile (SDK build → runtime image)
-- Volume mounts for `/data` (blobs + SQLite)
-- Environment-based config (`ASPNETCORE_ENVIRONMENT`, `Storage__BasePath`, connection string)
-- `docker-compose.yml` for local self-hosting
-- Multi-arch builds: amd64 + arm64 (GitHub Actions)
-- Docker Hub publishing
+## Phase 1 — Infrastructure ✅ Complete
 
 ---
 
@@ -92,12 +110,11 @@
 
 ### 5. Enhanced Blazor UI
 - Image and PDF inline previews
-- Bulk select: download as zip, delete multiple
-- Folder navigation (prefix-based virtual paths)
-- Dark mode toggle
+- Bulk select: delete multiple
 - Mobile-responsive layout
 - File metadata viewer (content-type, ETag, size, dates)
 - Storage analytics charts (usage over time, per-bucket breakdown)
+- ~~Folder navigation~~ ✅, ~~Dark mode~~ ✅, ~~ZIP download~~ ✅
 
 ### 6. Object Metadata & Tags
 - Key-value tags per object (stored in DB)

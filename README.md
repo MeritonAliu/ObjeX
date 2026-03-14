@@ -64,9 +64,17 @@ curl -X PUT http://localhost:8080/api/objects/my-bucket/hello.txt \
 curl http://localhost:8080/api/objects/my-bucket/hello.txt \
   -H "X-API-Key: $OBX_KEY"
 
-# List objects
+# List objects (flat)
 curl http://localhost:8080/api/objects/my-bucket/ \
   -H "X-API-Key: $OBX_KEY"
+
+# List objects with virtual folder navigation
+curl "http://localhost:8080/api/objects/my-bucket/?prefix=images/&delimiter=/" \
+  -H "X-API-Key: $OBX_KEY"
+
+# Download a folder as ZIP
+curl "http://localhost:8080/api/objects/my-bucket/download?prefix=images/" \
+  -H "X-API-Key: $OBX_KEY" -o images.zip
 
 # Delete an object
 curl -X DELETE http://localhost:8080/api/objects/my-bucket/hello.txt \
@@ -159,7 +167,8 @@ Bucket name rules: 3–63 chars, lowercase alphanumeric and hyphens, no consecut
 | `PUT` | `/api/objects/{bucket}/{*key}` | Upload an object (streaming) |
 | `GET` | `/api/objects/{bucket}/{*key}` | Download an object |
 | `DELETE` | `/api/objects/{bucket}/{*key}` | Delete an object |
-| `GET` | `/api/objects/{bucket}/` | List objects in a bucket |
+| `GET` | `/api/objects/{bucket}/` | List objects — accepts `?prefix=&delimiter=`; returns `{ objects, commonPrefixes }` |
+| `GET` | `/api/objects/{bucket}/download` | Download objects as ZIP — accepts `?prefix=` to scope to a folder |
 
 Object keys support slashes (virtual folders): `PUT /api/objects/my-bucket/images/photo.jpg`
 
@@ -254,7 +263,10 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Clean Architecture (Core / Infrastructure / API / Web)
 - [x] Bucket CRUD with name validation
 - [x] Object upload (streaming), download, delete, list
-- [x] Blazor bucket detail page (`/buckets/{name}`) — file list, breadcrumb, upload dialog, per-object download + delete
+- [x] Blazor bucket detail page (`/buckets/{name}`) — virtual folder navigation, breadcrumb, New Folder, upload (uploads into current folder), per-object/folder download + delete
+- [x] ZIP download of any folder via API
+- [x] Dark mode with system preference detection (cookie-persisted, toggle in Settings)
+- [x] Atomic blob writes — write to `.tmp`, then `File.Move` into final path; stale `.tmp` cleanup on startup
 - [x] ETag computation (MD5) on upload
 - [x] SQLite metadata store via EF Core (auto-migrated on startup)
 - [x] Content-addressable filesystem blob store (SHA256 hashed paths, 2-level nesting)
@@ -283,11 +295,12 @@ See [ROADMAP.md](./ROADMAP.md) for the full plan.
 - [x] **Blazor UI** — dashboard (`/`), bucket list (`/buckets`), bucket detail + file browser (`/buckets/{name}`), drag-drop upload, per-object download/delete, API key management (`/settings`)
 - [x] **Authentication** — Identity, cookie + API key dual auth, login/logout UI, admin seeding
 - [x] **API Key system** — `X-API-Key` middleware, key management endpoints + UI
-- [ ] **Dockerize** — Dockerfile + docker-compose, multi-arch (amd64/arm64)
+- [x] **Dockerize** — multi-stage Dockerfile, docker-compose, multi-arch (amd64/arm64)
+- [x] **Virtual folder navigation** — prefix/delimiter listing, New Folder, ZIP download, folder delete
+- [x] **Dark mode** — system preference detection, cookie persistence, toggle in Settings
 - [ ] **S3 Compatibility** — AWS Sig V4, XML responses, aws-cli/boto3 support
 - [ ] **Multipart Upload** — 5GB+ files, Initiate/UploadPart/Complete
 - [ ] **Presigned URLs** — HMAC-SHA256 signed download + upload links
-- [ ] **Enhanced Blazor UI** — previews, bulk ops, folder nav, dark mode
 - [ ] **User Management UI** — registration, user list, password reset
 - [ ] **Bucket Permissions** — per-bucket ACL, per-user read/write/delete
 - [ ] **Teams & Organizations** — multi-tenant, quotas, team roles

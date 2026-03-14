@@ -11,7 +11,7 @@ src/
 ├── ObjeX.Api/           # ASP.NET Core host — Program.cs, Endpoints/, Middleware/, Auth/
 ├── ObjeX.Core/          # Domain — zero framework dependencies
 │   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHashService, IHasTimestamps
-│   ├── Models/          # Bucket, BlobObject, ApiKey, User
+│   ├── Models/          # Bucket, BlobObject, ApiKey, User, ListObjectsResult
 │   ├── Utilities/       # HashingStream (MD5 passthrough for ETag computation during upload)
 │   └── Validation/      # BucketNameValidator (GetValidationError)
 ├── ObjeX.Infrastructure/
@@ -24,7 +24,7 @@ src/
 └── ObjeX.Web/           # Blazor Server UI — components, pages, dialogs
     └── Components/
         ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound
-        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateApiKeyDialog, ShowApiKeyDialog
+        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateApiKeyDialog, ShowApiKeyDialog, CreateFolderDialog
         └── Layout/      # MainLayout, NavMenu, EmptyLayout
 ```
 
@@ -200,12 +200,17 @@ public interface IMetadataService
     Task<bool> ExistsBucketAsync(string bucketName, CancellationToken ctk = default);
     Task<BlobObject> SaveObjectAsync(BlobObject blobObject, CancellationToken ctk = default);
     Task<BlobObject?> GetObjectAsync(string bucketName, string key, CancellationToken ctk = default);
-    Task<IEnumerable<BlobObject>> ListObjectsAsync(string bucketName, CancellationToken ctk = default);
-    Task<IEnumerable<BlobObject>> ListAllObjectsAsync(CancellationToken ctk = default); // all objects across all buckets
+    Task<ListObjectsResult> ListObjectsAsync(string bucketName, string? prefix = null, string? delimiter = null, CancellationToken ctk = default);
+    Task<IEnumerable<BlobObject>> ListAllObjectsAsync(CancellationToken ctk = default); // all objects across all buckets — NOT filtered, used by Hangfire cleanup
     Task DeleteObjectAsync(string bucketName, string key, CancellationToken ctk = default);
     Task<bool> ExistsObjectAsync(string bucketName, string key, CancellationToken ctk = default);
     Task UpdateBucketStatsAsync(string bucketName, CancellationToken ctk = default);
 }
+
+// ObjeX.Core/Models/ListObjectsResult.cs
+public record ListObjectsResult(IEnumerable<BlobObject> Objects, IEnumerable<string> CommonPrefixes);
+// Objects = files at current level; CommonPrefixes = virtual folder paths (e.g. "photos/2024/")
+// Placeholder objects (key ends with "/", ContentType "application/x-directory") are filtered from UI
 
 // ObjeX.Core/Interfaces/IHashService.cs
 public interface IHashService
@@ -264,6 +269,8 @@ Example:
   path   = /data/blobs/photos/a3/f7/a3f7c2....blob
 ```
 
+**Atomic writes:** `StoreAsync` writes to `{hash}.blob.tmp` first, then `File.Move(..., overwrite: true)` into the final path. Move is atomic on Linux. On crash, the `.tmp` file is cleaned up at next startup (files older than 1 hour are deleted). This prevents corrupt blobs with valid metadata pointing to them.
+
 **Why hashed paths:**
 - Eliminates path traversal risk — the logical key never touches the filesystem raw
 - Distributes files evenly across 256×256 = 65,536 directories — no hot directories
@@ -306,6 +313,10 @@ External S3 clients → HTTP → ObjeX.Api endpoints → same services
 
 **File downloads are the exception to "no API calls from Blazor":** Blazor Server runs on the server and cannot push file bytes to the browser's download manager through SignalR. Download buttons use a plain `<a href="/api/objects/..." download>` pointing at the API endpoint. This is not an architecture violation — it's a browser constraint.
 
+**Virtual folder navigation:** `Objects.razor` tracks `_currentPrefix` (e.g. `"photos/2024/"`) as component state. Calls `ListObjectsAsync` with `delimiter: "/"` — folders render as clickable rows, files as regular rows in a unified `RadzenDataGrid`. Breadcrumb segments are `<span @onclick>` (not `RadzenLink`) to avoid full-page navigation. Folder create writes a zero-byte placeholder object with key `prefix/` and `ContentType: application/x-directory`. Upload prepends `_currentPrefix` to the file name. Placeholder objects (key ends with `/`) are filtered from file rows.
+
+**Dark mode:** Theme stored in `objex-theme` cookie. `App.razor` reads cookie via `IHttpContextAccessor` server-side and passes to `<RadzenTheme>` — no flash on load. An inline `<script>` in `<head>` sets the cookie from `prefers-color-scheme` on first visit. Toggle in Settings page uses `ThemeService.SetTheme()` + JS cookie write. `ThemeService` is registered as `AddScoped<ThemeService>()` — do NOT use `AddRadzenCookieThemeService` (it fights the server-side rendering). Read initial switch state from cookie via JS in `OnAfterRenderAsync`, not from `ThemeService.Theme` (which is null on Blazor init).
+
 ---
 
 ## Endpoint Routes
@@ -318,10 +329,11 @@ GET    /api/buckets/{name}        → get bucket
 DELETE /api/buckets/{name}        → delete bucket
 
 # Objects (require ApiPolicy)
-PUT    /api/objects/{bucket}/{*key}   → upload object
-GET    /api/objects/{bucket}/{*key}   → download object
-DELETE /api/objects/{bucket}/{*key}   → delete object
-GET    /api/objects/{bucket}/         → list objects in bucket
+PUT    /api/objects/{bucket}/{*key}          → upload object
+GET    /api/objects/{bucket}/{*key}          → download object
+DELETE /api/objects/{bucket}/{*key}          → delete object
+GET    /api/objects/{bucket}/                → list objects; accepts ?prefix=&delimiter= query params; returns { objects, commonPrefixes }
+GET    /api/objects/{bucket}/download        → ZIP download; accepts ?prefix= to scope to a virtual folder
 
 # API Keys (require ApiPolicy)
 POST   /api/keys          → create key; response includes key value (shown once)
@@ -401,12 +413,12 @@ dotnet ef database update  # or just run the app — auto-migrates
 
 ## Roadmap (Priority Order)
 
-1. **Dockerize** — multi-stage Dockerfile, docker-compose, volume mounts for `/data`, multi-arch
-2. **Object listing with prefix/delimiter** — prefix + delimiter params in `ListObjectsAsync`
+1. ~~**Dockerize**~~ ✅ — multi-stage Dockerfile, docker-compose, volume mounts, multi-arch
+2. ~~**Object listing with prefix/delimiter**~~ ✅ — virtual folder nav, New Folder, ZIP download, folder delete
 3. **S3 Compatibility** — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes
 4. **Multipart Upload** — Initiate/UploadPart/Complete endpoints, temp part storage, 5GB+ support
 5. **Presigned URLs** — HMAC-SHA256 signed URLs, expiry enforcement, upload + download
-6. **Enhanced Blazor UI** — previews, bulk ops, folder nav, dark mode, analytics charts
+6. ~~**Enhanced Blazor UI**~~ ✅ — folder nav, dark mode (system preference + cookie persistence)
 7. **Object Tags** — key-value tags, tag-based search, lifecycle/retention policies
 8. **User Management UI** — registration, user list, password reset (Identity backend already in place)
 9. **Bucket Permissions** — per-bucket ACL, read/write/delete, permission checks in endpoints
