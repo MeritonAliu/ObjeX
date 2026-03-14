@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿@inject IHttpContextAccessor HttpContextAccessor
+<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -11,7 +12,8 @@
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
     <HeadOutlet />
-    <RadzenTheme Theme="material" />
+    <script>if (!document.cookie.includes('objex-theme=')) { document.cookie = 'objex-theme=' + (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'material-dark' : 'material') + '; path=/; max-age=31536000'; }</script>
+    <RadzenTheme Theme="@(HttpContextAccessor.HttpContext?.Request.Cookies["objex-theme"] ?? "material")" />
 </head>
 
 <body>

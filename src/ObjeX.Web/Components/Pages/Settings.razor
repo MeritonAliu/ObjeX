@@ -7,11 +7,24 @@
 @inject AuthenticationStateProvider AuthStateProvider
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject ThemeService ThemeService
+@inject IJSRuntime JS
 
 <PageTitle>Settings</PageTitle>
 
 <RadzenStack Gap="1.5rem">
     <RadzenText TextStyle="TextStyle.H4">Settings</RadzenText>
+
+    <RadzenCard>
+        <RadzenStack Gap="1rem">
+            <RadzenText TextStyle="TextStyle.H6">Appearance</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center"
+                         JustifyContent="JustifyContent.SpaceBetween">
+                <RadzenText>Dark mode</RadzenText>
+                <RadzenSwitch @bind-Value="_isDark" Change="OnThemeChanged" />
+            </RadzenStack>
+        </RadzenStack>
+    </RadzenCard>
 
     <RadzenCard>
         <RadzenStack Gap="1rem">
@@ -60,12 +73,28 @@
 @code {
     List<ApiKey> _keys = [];
     string _userId = string.Empty;
+    bool _isDark;
 
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
         await LoadKeys();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var cookie = await JS.InvokeAsync<string>("eval", "document.cookie.split('; ').find(r=>r.startsWith('objex-theme='))?.split('=')[1]??''");
+        _isDark = cookie.Contains("dark");
+        StateHasChanged();
+    }
+
+    async Task OnThemeChanged(bool value)
+    {
+        var theme = value ? "material-dark" : "material";
+        ThemeService.SetTheme(theme);
+        await JS.InvokeVoidAsync("eval", $"document.cookie='objex-theme={theme};path=/;max-age=31536000'");
     }
 
     async Task LoadKeys()

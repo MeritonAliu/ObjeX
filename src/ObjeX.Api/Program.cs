@@ -131,7 +131,9 @@ builder.Services.AddScoped<CleanupOrphanedBlobsJob>();
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
     .AddHubOptions(o => o.MaximumReceiveMessageSize = 500 * 1024 * 1024);
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddRadzenComponents();
+builder.Services.AddScoped<ThemeService>();
 builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddCors(options =>
