@@ -11,7 +11,7 @@
     <link rel="stylesheet" href="@Assets["ObjeX.Web.styles.css"]" />
     <ImportMap />
     <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet />
+    <HeadOutlet @rendermode="InteractiveServer" />
     <script>if (!document.cookie.includes('objex-theme=')) { document.cookie = 'objex-theme=' + (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'material-dark' : 'material') + '; path=/; max-age=31536000'; }</script>
     <RadzenTheme Theme="@(HttpContextAccessor.HttpContext?.Request.Cookies["objex-theme"] ?? "material")" />
 </head>

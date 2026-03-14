@@ -4,7 +4,7 @@
 @implements IDisposable
 @inject IMetadataService MetadataService
 
-<PageTitle>Dashboard</PageTitle>
+<PageTitle>Dashboard — ObjeX</PageTitle>
 
 <RadzenStack Gap="1.5rem">
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center"
@@ -15,26 +15,26 @@
         </RadzenText>
     </RadzenStack>
 
-    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem">
-        <RadzenCard Style="flex:1">
+    <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="flex-wrap:wrap">
+        <RadzenCard Style="flex:1;min-width:140px">
             <RadzenStack Gap="0.25rem">
                 <RadzenText TextStyle="TextStyle.Overline">Total Buckets</RadzenText>
                 <RadzenText TextStyle="TextStyle.H3">@_buckets.Count</RadzenText>
             </RadzenStack>
         </RadzenCard>
-        <RadzenCard Style="flex:1">
+        <RadzenCard Style="flex:1;min-width:140px">
             <RadzenStack Gap="0.25rem">
                 <RadzenText TextStyle="TextStyle.Overline">Total Objects</RadzenText>
                 <RadzenText TextStyle="TextStyle.H3">@_totalObjects.ToString("N0")</RadzenText>
             </RadzenStack>
         </RadzenCard>
-        <RadzenCard Style="flex:1">
+        <RadzenCard Style="flex:1;min-width:140px">
             <RadzenStack Gap="0.25rem">
                 <RadzenText TextStyle="TextStyle.Overline">Storage Used</RadzenText>
                 <RadzenText TextStyle="TextStyle.H3">@FileHelper.FormatBytes(_totalSize)</RadzenText>
             </RadzenStack>
         </RadzenCard>
-        <RadzenCard Style="flex:1">
+        <RadzenCard Style="flex:1;min-width:140px">
             <RadzenStack Gap="0.25rem">
                 <RadzenText TextStyle="TextStyle.Overline">Avg Object Size</RadzenText>
                 <RadzenText TextStyle="TextStyle.H3">@(_totalObjects > 0 ? FileHelper.FormatBytes(_totalSize / _totalObjects) : "—")</RadzenText>
@@ -47,6 +47,7 @@
         <RadzenCard>
             <RadzenStack Gap="1rem">
                 <RadzenText TextStyle="TextStyle.H6">Buckets</RadzenText>
+                <div style="overflow-x:auto">
                 <RadzenDataGrid Data="@_buckets" TItem="Bucket" AllowSorting="true">
                     <Columns>
                         <RadzenDataGridColumn TItem="Bucket" Property="Name" Title="Name">
@@ -79,6 +80,7 @@
                         </RadzenDataGridColumn>
                     </Columns>
                 </RadzenDataGrid>
+                </div>
             </RadzenStack>
         </RadzenCard>
     }

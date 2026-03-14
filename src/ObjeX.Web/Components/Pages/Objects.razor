@@ -8,7 +8,7 @@
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 
-<PageTitle>@BucketName</PageTitle>
+<PageTitle>@BucketName — ObjeX</PageTitle>
 
 <RadzenStack Gap="1rem">
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
@@ -33,7 +33,7 @@
         </RadzenStack>
     </RadzenStack>
 
-    <div class="objects-grid">
+    <div class="objects-grid" style="overflow-x:auto">
     <RadzenDataGrid Data="@_rows" TItem="ListRow" AllowSorting="true" EmptyText="No objects in this bucket.">
         <Columns>
             <RadzenDataGridColumn TItem="ListRow" Title="Name">

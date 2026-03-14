@@ -1,9 +1,18 @@
 @inherits LayoutComponentBase
+@inject IJSRuntime JS
 
 <AuthorizeView>
     <Authorized>
         <RadzenLayout>
-            <RadzenSidebar>
+            <RadzenHeader>
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem" Style="padding: 0 1rem; height:100%">
+                    <RadzenButton Icon="menu" ButtonStyle="ButtonStyle.Light" Variant="Variant.Text"
+                                  Click="@(() => _sidebarExpanded = !_sidebarExpanded)" />
+                    <RadzenText TextStyle="TextStyle.H6" Style="margin:0">ObjeX</RadzenText>
+                </RadzenStack>
+            </RadzenHeader>
+
+            <RadzenSidebar @bind-Expanded="_sidebarExpanded">
                 <NavMenu/>
             </RadzenSidebar>
 
@@ -22,3 +31,17 @@
     </NotAuthorized>
 </AuthorizeView>
 
+@code {
+    bool _sidebarExpanded = true;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        var width = await JS.InvokeAsync<int>("eval", "window.innerWidth");
+        if (width < 768)
+        {
+            _sidebarExpanded = false;
+            StateHasChanged();
+        }
+    }
+}

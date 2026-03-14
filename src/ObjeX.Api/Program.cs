@@ -27,7 +27,11 @@ var builder = WebApplication.CreateBuilder(args);
 // Upload size limit — null = unlimited (disk space guard is the real protection).
 // Override via Storage:MaxUploadBytes in config.
 var maxUploadBytes = builder.Configuration.GetValue<long?>("Storage:MaxUploadBytes");
-builder.WebHost.ConfigureKestrel(o => o.Limits.MaxRequestBodySize = maxUploadBytes);
+builder.WebHost.ConfigureKestrel(o =>
+{
+    o.Limits.MaxRequestBodySize = maxUploadBytes;
+    o.AddServerHeader = false; // don't leak "Server: Kestrel"
+});
 
 builder.Services.AddScoped<IMetadataService, SqliteMetadataService>();
 builder.Services.AddSingleton<IHashService, Sha256HashService>();
@@ -248,6 +252,7 @@ app.UseCors();
 app.UseRateLimiter();
 app.Use(async (ctx, next) =>
 {
+    ctx.Response.Headers.Remove("X-Powered-By");
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
     ctx.Response.Headers["X-Frame-Options"] = "DENY";
     ctx.Response.Headers["X-Permitted-Cross-Domain-Policies"] = "none";

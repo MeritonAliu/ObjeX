@@ -6,7 +6,7 @@
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 
-<PageTitle>Buckets</PageTitle>
+<PageTitle>Buckets — ObjeX</PageTitle>
 
 <RadzenStack Gap="1rem">
     <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
@@ -14,6 +14,7 @@
         <RadzenButton Text="Create Bucket" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OnCreateBucket" />
     </RadzenStack>
 
+    <div style="overflow-x:auto">
     <RadzenDataGrid Data="@_buckets" TItem="Bucket" AllowSorting="true" EmptyText="No buckets yet.">
         <Columns>
             <RadzenDataGridColumn TItem="Bucket" Property="Name" Title="Name">
@@ -34,6 +35,7 @@
             </RadzenDataGridColumn>
         </Columns>
     </RadzenDataGrid>
+    </div>
 </RadzenStack>
 
 @code {
