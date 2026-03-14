@@ -273,7 +273,7 @@ SQLite is the right choice for single-node homelab use — zero config, no separ
 
 **Multi-instance:** startup migration (`db.Database.Migrate()`) is not safe for concurrent multi-instance deployments — if two processes start simultaneously, both race on schema migration. SQLite's file lock serializes this in practice but it's not a guarantee. ObjeX is single-node by design; if you ever run multiple instances, extract migrations into a dedicated pre-start step.
 
-**SQLite configuration:** WAL mode (`journal_mode=WAL`) and `synchronous=NORMAL` are applied on every startup and persist to the DB file. WAL enables concurrent reads during writes. `Busy Timeout=5000` is set in the connection string — SQLite retries internally for up to 5 seconds on lock contention before throwing `SQLITE_BUSY`, covering the shared use between EF Core and Hangfire. EF Core `CommandTimeout` is set to 30 seconds.
+**SQLite configuration:** WAL mode (`journal_mode=WAL`), `synchronous=NORMAL`, and `busy_timeout=5000` are applied via PRAGMA on every startup and persist to the DB file. WAL enables concurrent reads during writes. `busy_timeout` makes SQLite retry internally for up to 5 seconds on lock contention before throwing `SQLITE_BUSY`. EF Core `CommandTimeout` is set to 30 seconds.
 
 **Architecture note:** Hangfire, EF Core (metadata + Identity), and the app all share one `objex.db` file. Separating Hangfire onto its own SQLite file or an in-memory store is a future improvement. For now, the weekly cleanup job is the only significant Hangfire write activity.
 
