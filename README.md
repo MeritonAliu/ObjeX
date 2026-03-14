@@ -451,7 +451,17 @@ See [ROADMAP.md](./ROADMAP.md) for the full plan.
 
 ## CI/CD
 
-Two GitHub Actions workflows in `.github/workflows/`:
+Three automation files in `.github/`:
+
+### Dependabot (`.github/dependabot.yml`)
+
+Dependabot runs weekly on Mondays and opens PRs for:
+- **NuGet packages** — grouped into `radzen`, `ef-core`, `hangfire`, `serilog` to reduce PR noise (max 5 open at once)
+- **GitHub Actions** — keeps workflow action versions up to date
+
+Review and merge Dependabot PRs regularly — they're the lowest-effort way to pick up security patches in dependencies.
+
+### GitHub Actions workflows (`.github/workflows/`)
 
 | Workflow | File | Trigger | Runner |
 |----------|------|---------|--------|

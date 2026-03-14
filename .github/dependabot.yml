@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "nuget"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+    open-pull-requests-limit: 5
+    groups:
+      radzen:
+        patterns:
+          - "Radzen.*"
+      ef-core:
+        patterns:
+          - "Microsoft.EntityFrameworkCore*"
+      hangfire:
+        patterns:
+          - "Hangfire.*"
+      serilog:
+        patterns:
+          - "Serilog.*"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"

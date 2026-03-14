@@ -404,6 +404,8 @@ GET    /scalar/v1         → interactive API docs (require auth)
 
 ## CI/CD
 
+**`.github/dependabot.yml`** — weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`, max 5 open) and GitHub Actions versions.
+
 Two workflows in `.github/workflows/`:
 
 **`ci.yml`** — build gate, GitHub-hosted runner (`ubuntu-latest`)
