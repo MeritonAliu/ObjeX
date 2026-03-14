@@ -32,6 +32,8 @@ Open **http://localhost:8080** — log in with `admin` / `admin`.
 
 All API endpoints require authentication via **cookie session** (browser) or **API key** (external clients).
 
+> **Single-user app:** ObjeX is currently a single-admin-user system. There is no user registration UI — the only account is the admin seeded on first run. All authenticated requests have full access to all buckets and objects. There is no per-bucket ownership, no user isolation, and no per-key scope restrictions. A leaked API key means full access to everything. This is intentional for the current scope (personal homelab, single operator) and will change in Phase 4 (Bucket Permissions + User Management).
+
 ### API Key
 
 Create a key in the Settings page (`/settings`) or via the API:
