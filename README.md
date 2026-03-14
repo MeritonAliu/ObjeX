@@ -197,6 +197,8 @@ Upload response:
 Create request: `{"name":"my-key","expiresInDays":365}` (omit for 10-year default)
 Create response: `{"key":"obx_...","name":"...","expiresAt":"..."}` — **key value shown once only**
 
+**Key storage:** API keys are hashed with SHA256 before storage — the database never contains the raw key. A DB leak does not expose usable keys. The first 12 characters (`KeyPrefix`, e.g. `obx_aBcDeFgH`) are stored for display in the UI.
+
 ---
 
 ## Technology Stack
