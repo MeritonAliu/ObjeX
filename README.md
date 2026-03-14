@@ -4,6 +4,8 @@
 **Stack**: .NET 10 API + Blazor Server UI + SQLite + Filesystem storage
 **Status**: Active development — core API, auth, and UI implemented
 
+> **Scope:** Single-node object storage for homelabs, internal tools, and dev/test environments. Not yet suitable for mission-critical data — no replication, high availability, or point-in-time recovery.
+
 ---
 
 ## Quick Start
