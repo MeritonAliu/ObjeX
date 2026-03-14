@@ -8,6 +8,7 @@ using ObjeX.Api.Auth;
 using ObjeX.Core.Interfaces;
 using ObjeX.Infrastructure.Data;
 using ObjeX.Infrastructure.Hashing;
+using ObjeX.Infrastructure.Health;
 using ObjeX.Infrastructure.Jobs;
 using ObjeX.Infrastructure.Metadata;
 using ObjeX.Infrastructure.Storage;
@@ -38,7 +39,9 @@ builder.Services.AddControllers()
         options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
     });
 builder.Services.AddOpenApi();
-builder.Services.AddHealthChecks();
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<ObjeXDbContext>(tags: ["ready"])
+    .AddCheck<BlobStorageHealthCheck>("blob_storage", tags: ["ready"]);
 
 builder.Services.AddResponseCompression(options =>
 {
@@ -244,6 +247,11 @@ app.MapScalarApiReference(options =>
     options.WithTitle("ObjeX API");
 }).RequireAuthorization();
 app.MapHealthChecks("/health");
+app.MapHealthChecks("/health/live");
+app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
+{
+    Predicate = check => check.Tags.Contains("ready")
+});
 
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();

@@ -21,7 +21,8 @@ Open **http://localhost:8080** — log in with `admin` / `admin`.
 - **Blazor UI**: http://localhost:8080
 - **API docs (Scalar)**: http://localhost:8080/scalar/v1
 - **Job dashboard**: http://localhost:8080/hangfire
-- **Health check**: http://localhost:8080/health
+- **Health check**: http://localhost:8080/health (liveness)
+- **Health check (readiness)**: http://localhost:8080/health/ready
 
 > ⚠️ Change the default admin credentials before exposing the instance publicly. Set `DefaultAdmin:Username`, `DefaultAdmin:Email`, and `DefaultAdmin:Password` in `appsettings.json` or environment variables.
 
@@ -149,7 +150,7 @@ ObjeX/
 
 ## API Endpoints
 
-All endpoints except `/account/*` and `/health` require authentication (`X-API-Key` header or session cookie).
+All endpoints except `/account/*` and `/health/*` require authentication (`X-API-Key` header or session cookie).
 
 ### Buckets — `/api/buckets`
 
@@ -301,7 +302,7 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 - [x] Proper 401 responses for unauthenticated API requests (not 302 redirects)
 - [x] Hangfire dashboard at `/hangfire` (Admin role required)
 - [x] Scalar interactive API docs at `/scalar/v1`
-- [x] Health check endpoint at `/health`
+- [x] Health checks — `/health/live` (liveness) and `/health/ready` (readiness: DB + blob storage)
 - [x] Serilog structured logging + request logging
 - [x] Response compression
 
