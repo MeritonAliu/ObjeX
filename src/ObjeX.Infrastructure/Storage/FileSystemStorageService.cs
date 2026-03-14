@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Logging;
+
 using ObjeX.Core.Interfaces;
 
 namespace ObjeX.Infrastructure.Storage;
@@ -6,21 +8,62 @@ public class FileSystemStorageService : IObjectStorageService
 {
     internal string BasePath { get; }
     private readonly IHashService _hashService;
+    private readonly ILogger<FileSystemStorageService> _logger;
 
-    public FileSystemStorageService(string basePath, IHashService hashService)
+    private static readonly TimeSpan StaleTmpThreshold = TimeSpan.FromHours(1);
+
+    public FileSystemStorageService(string basePath, IHashService hashService, ILogger<FileSystemStorageService> logger)
     {
         BasePath = basePath;
         _hashService = hashService;
+        _logger = logger;
         Directory.CreateDirectory(BasePath);
+        CleanupStaleTmpFiles();
+    }
+
+    private void CleanupStaleTmpFiles()
+    {
+        var cutoff = DateTime.UtcNow - StaleTmpThreshold;
+        var deleted = 0;
+
+        foreach (var tmp in Directory.EnumerateFiles(BasePath, "*.tmp", SearchOption.AllDirectories))
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(tmp) < cutoff)
+                {
+                    File.Delete(tmp);
+                    deleted++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete stale tmp file {Path}", tmp);
+            }
+        }
+
+        if (deleted > 0)
+            _logger.LogInformation("Deleted {Count} stale .tmp blob file(s) on startup", deleted);
     }
 
     public async Task<string> StoreAsync(string bucketName, string key, Stream data, CancellationToken ctk = default)
     {
         var filePath = GetFilePath(bucketName, key);
+        var tmpPath = filePath + ".tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
-        await using var fileStream = File.Create(filePath);
-        await data.CopyToAsync(fileStream, ctk);
+        try
+        {
+            await using (var fileStream = File.Create(tmpPath))
+                await data.CopyToAsync(fileStream, ctk);
+
+            File.Move(tmpPath, filePath, overwrite: true);
+        }
+        catch
+        {
+            File.Delete(tmpPath);
+            throw;
+        }
 
         return filePath;
     }
