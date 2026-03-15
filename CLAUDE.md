@@ -402,26 +402,14 @@ GET    /scalar/v1         → interactive API docs (require auth)
 
 ---
 
-## CI/CD
+## CI
 
 **`.github/dependabot.yml`** — weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`, max 5 open) and GitHub Actions versions.
-
-Two workflows in `.github/workflows/`:
 
 **`ci.yml`** — build gate, GitHub-hosted runner (`ubuntu-latest`)
 - Triggers: push to `main`, any PR
 - Steps: checkout → setup .NET (from `global.json`) → restore → build Release
 - No tests yet (nothing to run)
-
-**`cd.yml`** — dev deployment, self-hosted runner (labels: `self-hosted`, `objex`, `cd`, `dev`)
-- Triggers: push to `main`, `workflow_dispatch`
-- `ASPNETCORE_ENVIRONMENT=Development`, builds Debug
-- Stop: `pkill -f "ObjeX.Api.dll" || true`
-- Deploy: `rsync -av --delete --exclude='data/' ./publish/ ~/objex-live/` — the `--exclude='data/'` is critical, it preserves the SQLite DB and blobs across deploys
-- Data dirs: `~/objex-live/data/db/` and `~/objex-live/data/blobs/`
-- Start: `screen -dmS objex dotnet ObjeX.Api.dll --urls "http://0.0.0.0:8080"` — runs detached in a `screen` session named `objex`
-
-To check the running instance on the VM: `screen -r objex` (detach with Ctrl+A D).
 
 **`.dockerignore`** is present at repo root. It excludes `src/**/bin/`, `src/**/obj/`, `data/`, `.git/`, IDE folders, and local config overrides (`appsettings.Development.json`). Without it, `docker build` would send ~230MB of build artifacts as context on every build.
 

@@ -325,10 +325,10 @@ Then copy the `.bak` file and the blobs. There is a small race window between th
 # Stop the app first
 pkill -f ObjeX.Api.dll
 
-cp -a ~/objex-live/data/ ~/backups/objex-$(date +%Y%m%d)/
+cp -a ~/objex/data/ ~/backups/objex-$(date +%Y%m%d)/
 
 # Restart
-screen -dmS objex dotnet ~/objex-live/ObjeX.Api.dll --urls "http://0.0.0.0:8080"
+dotnet ~/objex/ObjeX.Api.dll --urls "http://0.0.0.0:8080"
 ```
 
 #### Restore
@@ -449,9 +449,9 @@ See [ROADMAP.md](./ROADMAP.md) for the full plan.
 
 ---
 
-## CI/CD
+## CI
 
-Three automation files in `.github/`:
+Two automation files in `.github/`:
 
 ### Dependabot (`.github/dependabot.yml`)
 
@@ -461,30 +461,13 @@ Dependabot runs weekly on Mondays and opens PRs for:
 
 Review and merge Dependabot PRs regularly — they're the lowest-effort way to pick up security patches in dependencies.
 
-### GitHub Actions workflows (`.github/workflows/`)
+### GitHub Actions (`.github/workflows/ci.yml`)
 
-| Workflow | File | Trigger | Runner |
-|----------|------|---------|--------|
-| CI | `ci.yml` | Push to `main`, any PR | `ubuntu-latest` (GitHub-hosted) |
-| CD | `cd.yml` | Push to `main`, manual dispatch | Self-hosted (`objex`, `cd`, `dev` labels) |
+| Trigger | Runner |
+|---------|--------|
+| Push to `main`, any PR | `ubuntu-latest` (GitHub-hosted) |
 
-**CI** — build-only gate: restore → build Release → fail fast on compile errors. No tests yet.
-
-**CD (dev instance)** — deploys to `~/objex-live/` on the self-hosted runner VM:
-1. Build + publish (Debug, `ASPNETCORE_ENVIRONMENT=Development`)
-2. `pkill -f ObjeX.Api.dll` to stop the running instance
-3. `rsync --exclude='data/'` to `~/objex-live/` — data directories are preserved across deploys
-4. Start via `screen -dmS objex dotnet ObjeX.Api.dll --urls http://0.0.0.0:8080`
-
-Data layout on the dev VM:
-```
-~/objex-live/
-├── ObjeX.Api.dll       # published app
-├── appsettings.json    # bundled config
-└── data/
-    ├── db/objex.db     # SQLite database (preserved by rsync --exclude)
-    └── blobs/          # blob files (preserved by rsync --exclude)
-```
+Build-only gate: restore → build Release → fail fast on compile errors. No tests yet.
 
 ## Testing
 
