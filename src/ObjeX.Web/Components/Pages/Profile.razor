@@ -1,0 +1,191 @@
+@page "/profile"
+@using Microsoft.AspNetCore.Identity
+@using ObjeX.Core.Models
+@inject UserManager<User> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NotificationService NotificationService
+@inject NavigationManager Navigation
+
+<PageTitle>Profile — ObjeX</PageTitle>
+
+<RadzenStack Gap="1.5rem">
+    <RadzenText TextStyle="TextStyle.H4">Profile</RadzenText>
+
+    <RadzenCard>
+        <RadzenStack Gap="1.25rem">
+            <RadzenText TextStyle="TextStyle.H6">Account</RadzenText>
+
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Start"
+                         JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Style="flex-wrap:wrap">
+                <RadzenStack Gap="0.1rem" Style="min-width:120px;padding-top:0.25rem">
+                    <RadzenText>Username</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Caption" Style="color:var(--rz-text-secondary-color)">Also used to log in</RadzenText>
+                </RadzenStack>
+                <RadzenStack Gap="0.25rem" Style="flex:1;min-width:200px">
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <input class="rz-textbox" style="flex:1;min-width:0"
+                               value="@_newUsername" @oninput="OnUsernameInput" />
+                        <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(string.IsNullOrWhiteSpace(_newUsername) || _newUsername == _currentUsername || _usernameError is not null)"
+                                      Click="@OnSaveUsername" />
+                    </RadzenStack>
+                    <span style="font-size:0.75rem;color:var(--rz-danger);visibility:@(_usernameError is not null ? "visible" : "hidden")">
+                        @(_usernameError ?? "\u00a0")
+                    </span>
+                </RadzenStack>
+            </RadzenStack>
+
+            <hr style="border:none;border-top:1px solid var(--rz-border-disabled-color);margin:0" />
+
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Start"
+                         JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Style="flex-wrap:wrap">
+                <RadzenStack Gap="0.1rem" Style="min-width:120px;padding-top:0.25rem">
+                    <RadzenText>Email</RadzenText>
+                    <RadzenText TextStyle="TextStyle.Caption" Style="color:var(--rz-text-secondary-color)">For account recovery</RadzenText>
+                </RadzenStack>
+                <RadzenStack Gap="0.25rem" Style="flex:1;min-width:200px">
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0.5rem">
+                        <input class="rz-textbox" style="flex:1;min-width:0" type="email"
+                           value="@_newEmail" @oninput="OnEmailInput" />
+                        <RadzenButton Text="Save" ButtonStyle="ButtonStyle.Primary"
+                                      Disabled="@(string.IsNullOrWhiteSpace(_newEmail) || _newEmail == _currentEmail || _emailError is not null)"
+                                      Click="@OnSaveEmail" />
+                    </RadzenStack>
+                    <span style="font-size:0.75rem;color:var(--rz-danger);visibility:@(_emailError is not null ? "visible" : "hidden")">
+                        @(_emailError ?? "\u00a0")
+                    </span>
+                </RadzenStack>
+            </RadzenStack>
+
+            <hr style="border:none;border-top:1px solid var(--rz-border-disabled-color);margin:0" />
+
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Start"
+                         JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Style="flex-wrap:wrap">
+                <RadzenStack Gap="0.1rem" Style="min-width:120px">
+                    <RadzenText>Password</RadzenText>
+                </RadzenStack>
+                <RadzenStack Gap="0.5rem" Style="flex:1;min-width:200px">
+                    <input class="rz-textbox" style="width:100%" type="password"
+                           placeholder="Current password" @bind="_currentPassword" @bind:event="oninput" />
+                    <input class="rz-textbox" style="width:100%" type="password"
+                           placeholder="New password" @bind="_newPassword" @bind:event="oninput" />
+                    <input class="rz-textbox" style="width:100%" type="password"
+                           placeholder="Confirm new password" @bind="_confirmPassword" @bind:event="oninput" />
+                    <span style="font-size:0.75rem;color:var(--rz-danger);visibility:@(_passwordError is not null ? "visible" : "hidden")">
+                        @(_passwordError ?? "\u00a0")
+                    </span>
+                    <RadzenButton Text="Change Password" ButtonStyle="ButtonStyle.Primary"
+                                  Disabled="@(!CanChangePassword)" Click="@OnChangePassword" />
+                </RadzenStack>
+            </RadzenStack>
+
+        </RadzenStack>
+    </RadzenCard>
+</RadzenStack>
+
+@code {
+    User? _user;
+    string _currentUsername = string.Empty;
+    string _newUsername = string.Empty;
+    string _currentEmail = string.Empty;
+    string _newEmail = string.Empty;
+    string _currentPassword = string.Empty;
+    string _newPassword = string.Empty;
+    string _confirmPassword = string.Empty;
+    string? _usernameError;
+    string? _emailError;
+    string? _passwordError;
+
+    bool CanChangePassword =>
+        !string.IsNullOrWhiteSpace(_currentPassword) &&
+        !string.IsNullOrWhiteSpace(_newPassword) &&
+        !string.IsNullOrWhiteSpace(_confirmPassword);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        _user = await UserManager.FindByIdAsync(userId!);
+        _currentUsername = _user?.UserName ?? string.Empty;
+        _newUsername = _currentUsername;
+        _currentEmail = _user?.Email ?? string.Empty;
+        _newEmail = _currentEmail;
+    }
+
+    void OnUsernameInput(ChangeEventArgs e)
+    {
+        _newUsername = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(_newUsername))
+            _usernameError = "Username cannot be empty.";
+        else if (!_newUsername.All(c => char.IsLetterOrDigit(c) || c == '_' || c == '-'))
+            _usernameError = "Only letters, numbers, underscores and hyphens allowed.";
+        else
+            _usernameError = null;
+    }
+
+    async Task OnSaveUsername()
+    {
+        if (_user is null) return;
+        var result = await UserManager.SetUserNameAsync(_user, _newUsername.Trim());
+        if (result.Succeeded)
+        {
+            _currentUsername = _newUsername.Trim();
+            NotificationService.Notify(NotificationSeverity.Success, "Username updated", _currentUsername);
+            Navigation.NavigateTo("/profile", forceLoad: true);
+        }
+        else
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Failed", result.Errors.First().Description);
+        }
+    }
+
+    void OnEmailInput(ChangeEventArgs e)
+    {
+        _newEmail = e.Value?.ToString() ?? string.Empty;
+        try { _ = new System.Net.Mail.MailAddress(_newEmail); _emailError = null; }
+        catch { _emailError = "Enter a valid email address."; }
+    }
+
+    async Task OnSaveEmail()
+    {
+        if (_user is null) return;
+        try { _ = new System.Net.Mail.MailAddress(_newEmail.Trim()); }
+        catch { _emailError = "Enter a valid email address."; return; }
+        var token = await UserManager.GenerateChangeEmailTokenAsync(_user, _newEmail.Trim());
+        var result = await UserManager.ChangeEmailAsync(_user, _newEmail.Trim(), token);
+        if (result.Succeeded)
+        {
+            _currentEmail = _newEmail.Trim();
+            NotificationService.Notify(NotificationSeverity.Success, "Email updated", _currentEmail);
+        }
+        else
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Failed", result.Errors.First().Description);
+        }
+    }
+
+    async Task OnChangePassword()
+    {
+        _passwordError = null;
+        if (_newPassword != _confirmPassword)
+        {
+            _passwordError = "Passwords do not match.";
+            return;
+        }
+        if (_newPassword.Length < 4)
+        {
+            _passwordError = "Password must be at least 4 characters.";
+            return;
+        }
+        if (_user is null) return;
+        var result = await UserManager.ChangePasswordAsync(_user, _currentPassword, _newPassword);
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo("/account/logout", forceLoad: true);
+        }
+        else
+        {
+            _passwordError = result.Errors.First().Description;
+        }
+    }
+}

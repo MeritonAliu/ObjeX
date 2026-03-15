@@ -10,31 +10,21 @@
         <RadzenPanelMenuItem Text="Settings" Path="/settings" Icon="build" />
     </RadzenPanelMenu>
 
-    <div style="padding:0.5rem">
-        <RadzenStack Gap="0.25rem" Style="padding:0.5rem; border-top:1px solid var(--rz-border-disabled-color)">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" Gap="0.5rem">
-                <RadzenIcon Icon="account_circle" Style="font-size:1.5rem; color:var(--rz-text-secondary-color)" />
-                <RadzenStack Gap="0">
-                    <RadzenText TextStyle="TextStyle.Subtitle2" style="margin:0">@_username</RadzenText>
-                    <RadzenText TextStyle="TextStyle.Caption" style="color:var(--rz-text-secondary-color); margin:0">@_role</RadzenText>
-                </RadzenStack>
-            </RadzenStack>
-            <RadzenButton Text="Sign out" Icon="logout" ButtonStyle="ButtonStyle.Danger"
-                          Variant="Variant.Text" Style="width:100%; justify-content:flex-start"
-                          Click="@(() => Navigation.NavigateTo("/account/logout", forceLoad: true))" />
-        </RadzenStack>
+    <div style="border-top:1px solid var(--rz-border-disabled-color)">
+        <RadzenPanelMenu>
+            <RadzenPanelMenuItem Text="@_username" Path="/profile" Icon="manage_accounts" />
+            <RadzenPanelMenuItem Text="Sign out" Icon="logout"
+                                 Click="@(() => Navigation.NavigateTo("/account/logout", forceLoad: true))" />
+        </RadzenPanelMenu>
     </div>
 </RadzenStack>
 
 @code {
     string _username = string.Empty;
-    string _role = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        var user = auth.User;
-        _username = user.Identity?.Name ?? "Unknown";
-        _role = user.IsInRole("Admin") ? "Admin" : "User";
+        _username = auth.User.Identity?.Name ?? "Unknown";
     }
 }
