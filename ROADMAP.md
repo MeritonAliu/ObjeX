@@ -21,23 +21,25 @@
 - `IMetadataService.ListAllObjectsAsync()` added for cross-bucket object enumeration
 
 ### Blazor UI ✅
-- Radzen Blazor component library
+- Radzen Blazor component library, Inter font (self-hosted), teal brand theme via CSS variable overrides
 - **Dashboard** (`/`) — total buckets, object count, storage used (10s auto-refresh)
 - **Buckets page** (`/buckets`) — list all buckets, create (with inline name validation), delete with confirmation
-- **Bucket detail / file browser** (`/buckets/{name}`) — lists all objects in a bucket, breadcrumb nav back to `/buckets`, upload button (reuses dialog), download per object (native `<a download>` → API endpoint), delete per object with confirmation
+- **Bucket detail / file browser** (`/buckets/{name}`) — virtual folder nav, breadcrumb, upload into current folder, per-object download (via S3 port 9000), delete, ZIP download
 - **Drag-and-drop upload dialog** — multi-file picker, streams files to `IObjectStorageService` directly from Blazor (no API round-trip)
-- **Settings page** (`/settings`) — API key management (create with one-time key display, list, delete)
+- **Settings page** (`/settings`) — API key management (create with one-time key display, list, delete) + dark/light mode toggle
+- **Profile page** (`/profile`) — username, email, password management with inline validation
 - Toast notifications bottom-right via Radzen `NotificationService`
 
-### CI/CD ✅
+### CI ✅
 - **CI** (`ci.yml`) — triggers on push to `main` and all PRs; runs on `ubuntu-latest`; restore → build Release; fails fast on compile errors; no tests yet
-- **CD** (`cd.yml`) — triggers on push to `main` and manual dispatch; runs on self-hosted runner (labels: `objex`, `cd`, `dev`); builds Debug with `ASPNETCORE_ENVIRONMENT=Development`; stops running instance with `pkill`, deploys to `~/objex-live/` via `rsync --exclude='data/'` (data directories preserved across deploys), starts app in a `screen` session (`screen -dmS objex dotnet ObjeX.Api.dll`)
+- **No CD** — deployments are manual via Docker Hub (`meritonaliu/objex:latest`)
 
 ### Dockerize ✅
 - Multi-stage Dockerfile (SDK build → ASP.NET runtime)
 - Multi-arch via `--platform=$BUILDPLATFORM` + `$TARGETARCH`
 - `docker-compose.yml` with named volume for `/data`
 - Environment variables for connection string and blob path baked into image defaults
+- Published to Docker Hub: `meritonaliu/objex:latest`
 
 ### Virtual Folder Navigation ✅
 - `ListObjectsResult` record in `ObjeX.Core/Models/` — `Objects` + `CommonPrefixes`
@@ -81,13 +83,15 @@
 
 ## Phase 2 — S3 Compatibility & Large Files
 
-### 2. S3 API Compatibility
-- S3-style routes: `PUT /{bucket}/{key}`, `GET /{bucket}/{key}`, `DELETE /{bucket}/{key}`
-- XML response formatting (S3 uses XML, not JSON)
-- AWS Signature V4 authentication (HMAC-SHA256 canonical request)
-- S3 error codes and error response format
-- Compatibility testing with `aws-cli`, `boto3`, `s3cmd`
-- `ListObjects` / `ListObjectsV2` with prefix + delimiter support
+### 2. S3 API Compatibility 🚧 In Progress
+- [x] S3-style routes on dedicated port 9000: `GET /`, `HEAD/PUT/DELETE /{bucket}`, `PUT/GET/HEAD/DELETE /{bucket}/{*key}`
+- [x] XML response formatting via `S3Xml` helper (`SecurityElement.Escape()` for injection prevention)
+- [x] S3 error code constants (`S3Errors` class)
+- [x] `?download=true` query param forces `application/octet-stream` attachment (cross-origin download fix)
+- [ ] AWS Signature V4 authentication (HMAC-SHA256 canonical request) — currently `AllowAnonymous`
+- [ ] `ListObjects` / `ListObjectsV2` with prefix + delimiter support
+- [ ] S3 error response XML format for all error cases
+- [ ] Compatibility testing with `aws-cli`, `boto3`, `s3cmd`
 
 ### 3. Multipart Upload
 - `POST /{bucket}/{key}?uploads` — InitiateMultipartUpload

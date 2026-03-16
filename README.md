@@ -97,6 +97,7 @@ curl -X DELETE http://localhost:9001/api/buckets/my-bucket \
 ## Architecture
 
 ```
+Port 9001 — UI + native API
 ┌─────────────────────────────────────────────────┐
 │              ASP.NET Core 10 App                │
 │                                                 │
@@ -105,17 +106,23 @@ curl -X DELETE http://localhost:9001/api/buckets/my-bucket \
 │  ├─ Auth endpoints (/account/login, /logout)    │
 │  └─ Scalar API Docs (/scalar/v1)               │
 │                                                 │
-│  Auth pipeline:                                 │
-│  Cookie ──┐                                     │
-│           ├─→ UseAuthorization → endpoints      │
-│  API Key ─┘                                     │
+│  Auth: Cookie ──┐                               │
+│                 ├─→ UseAuthorization             │
+│        API Key ─┘                               │
 │                                                 │
 │  ┌─────────────────────────────────────────┐    │
-│  │  Storage                                │    │
 │  │  ./data/blobs/  (content-addressed FS)  │    │
-│  │  ./objex.db     (SQLite — metadata +    │    │
-│  │                  identity + job store)  │    │
+│  │  ./data/db/objex.db  (SQLite)           │    │
 │  └─────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────┘
+
+Port 9000 — S3-compatible API
+┌─────────────────────────────────────────────────┐
+│  ├─ GET  /                  (list buckets)      │
+│  ├─ HEAD/PUT/DELETE /{bucket}                   │
+│  └─ PUT/GET/HEAD/DELETE /{bucket}/{*key}        │
+│                                                 │
+│  Auth: AllowAnonymous (Sig V4 — coming soon)    │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -126,25 +133,27 @@ ObjeX/
 ├── src/
 │   ├── ObjeX.Api/              # ASP.NET Core host
 │   │   ├── Auth/               # HangfireAuthorizationFilter, NoOpEmailSender
-│   │   ├── Endpoints/          # BucketEndpoints, ObjectEndpoints, ApiKeyEndpoints
+│   │   ├── Endpoints/          # BucketEndpoints, ObjectEndpoints, ApiKeyEndpoints, DownloadEndpoints
+│   │   │   └── S3Endpoints/    # S3BucketEndpoints, S3ObjectEndpoints
 │   │   ├── Middleware/         # ApiKeyAuthenticationMiddleware
+│   │   ├── S3/                 # S3Xml (XML builders), S3Errors (error code constants)
 │   │   └── Program.cs          # DI, middleware pipeline, EF migrations, admin seed
 │   │
 │   ├── ObjeX.Web/              # Blazor Server UI
 │   │   └── Components/
-│   │       ├── Pages/          # Dashboard, Buckets, Objects, Settings, Login
-│   │       ├── Dialogs/        # Create/upload/API key dialogs
+│   │       ├── Pages/          # Dashboard, Buckets, Objects, Settings, Profile, Login
+│   │       ├── Dialogs/        # Create/upload/API key/folder dialogs
 │   │       └── Layout/         # MainLayout (auth gate), NavMenu, EmptyLayout
 │   │
 │   ├── ObjeX.Core/             # Domain — no framework dependencies
 │   │   ├── Interfaces/         # IMetadataService, IObjectStorageService, IHashService
 │   │   ├── Models/             # Bucket, BlobObject, ApiKey, User
-│   │   └── Validation/         # BucketNameValidator
+│   │   └── Validation/         # BucketNameValidator, ObjectKeyValidator
 │   │
 │   └── ObjeX.Infrastructure/   # Implementations
 │       ├── Data/               # ObjeXDbContext (IdentityDbContext<User>)
 │       ├── Hashing/            # Sha256HashService
-│       ├── Jobs/               # CleanupOrphanedBlobsJob (Hangfire)
+│       ├── Jobs/               # CleanupOrphanedBlobsJob, VerifyBlobIntegrityJob (Hangfire)
 │       ├── Metadata/           # SqliteMetadataService
 │       ├── Migrations/         # EF Core migrations
 │       └── Storage/            # FileSystemStorageService
@@ -201,6 +210,23 @@ Create response: `{"key":"obx_...","name":"...","expiresAt":"..."}` — **key va
 
 **Key storage:** API keys are hashed with SHA256 before storage — the database never contains the raw key. A DB leak does not expose usable keys. The first 12 characters (`KeyPrefix`, e.g. `obx_aBcDeFgH`) are stored for display in the UI.
 
+### S3-Compatible API — port `9000`
+
+Exposed on a dedicated port for drop-in compatibility with S3 clients (`aws-cli`, `boto3`, `s3cmd`, etc.). Auth is currently `AllowAnonymous` — AWS Signature V4 is in progress.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/` | List all buckets (S3 XML) |
+| `HEAD` | `/{bucket}` | Bucket exists check |
+| `PUT` | `/{bucket}` | Create bucket |
+| `DELETE` | `/{bucket}` | Delete bucket |
+| `PUT` | `/{bucket}/{*key}` | Upload object |
+| `GET` | `/{bucket}/{*key}` | Download object (`?download=true` forces attachment) |
+| `HEAD` | `/{bucket}/{*key}` | Object metadata |
+| `DELETE` | `/{bucket}/{*key}` | Delete object |
+
+Configure `S3:PublicUrl` in `appsettings.json` (default `http://localhost:9000`) — used by the Blazor UI to build download links.
+
 ---
 
 ## Technology Stack
@@ -227,7 +253,8 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Setting | Default |
 |---------|---------|
 | UI / API port | `9001` |
-| S3 API port | `9000` (reserved, not yet implemented) |
+| S3 API port | `9000` (S3-compatible endpoints; Sig V4 auth in progress) |
+| S3 public URL | `http://localhost:9000` — set `S3:PublicUrl` for production |
 | Database | `./data/db/objex.db` (relative to working directory) |
 | Blob storage | `./data/blobs` (relative to working directory) |
 | Log files | `./data/logs/objex-YYYYMMDD.log` — daily rolling, 30 days retention, compact JSON |
@@ -394,83 +421,30 @@ The logical key (e.g. `images/2024/photo.jpg`) lives in the database only.
 
 ---
 
-## What's Implemented
-
-- [x] Clean Architecture (Core / Infrastructure / API / Web)
-- [x] Bucket CRUD with name validation
-- [x] Object upload (streaming), download, delete, list
-- [x] Blazor bucket detail page (`/buckets/{name}`) — virtual folder navigation, breadcrumb, New Folder, upload (uploads into current folder), per-object/folder download + delete
-- [x] ZIP download of any folder via API
-- [x] Dark mode with system preference detection (cookie-persisted, toggle in Settings)
-- [x] Atomic blob writes — write to `.tmp`, then `File.Move` into final path; stale `.tmp` cleanup on startup
-- [x] ETag computation (MD5) on upload
-- [x] `Content-Length` header on object downloads (enables progress bars and resumption)
-- [x] SQLite metadata store via EF Core (auto-migrated on startup)
-- [x] Content-addressable filesystem blob store (SHA256 hashed paths, 2-level nesting)
-- [x] Orphaned blob GC via Hangfire background job (weekly Sunday 03:00 UTC, results in dashboard)
-- [x] Blob integrity verification via Hangfire background job (weekly Sunday 04:00 UTC — recomputes MD5 of every blob, logs corrupted/missing files)
-- [x] ASP.NET Core Identity — User model, password hashing, roles (Admin/User)
-- [x] Default admin seeded on first run
-- [x] Login/logout UI (Blazor + Radzen, username or email, toast on error)
-- [x] Global Blazor route protection (all pages require login)
-- [x] Cookie auth for browser sessions
-- [x] API key auth for external clients (`X-API-Key` header, `obx_` prefix keys)
-- [x] API key management UI (Settings page — create, list, delete)
-- [x] Proper 401 responses for unauthenticated API requests (not 302 redirects)
-- [x] Hangfire dashboard at `/hangfire` (Admin role required)
-- [x] Scalar interactive API docs at `/scalar/v1`
-- [x] Health checks — `/health/live` (liveness) and `/health/ready` (readiness: DB + blob storage)
-- [x] Serilog structured logging + request logging
-- [x] Security audit logs — failed logins, invalid/expired API keys, object/bucket deletes, API key create/delete
-- [x] Daily rolling log files — compact JSON to `./data/logs/`, 30-day retention (Filebeat/Promtail compatible)
-- [x] Response compression
-- [x] Upload size limit — unlimited by default, configurable via `Storage:MaxUploadBytes`
-- [x] Disk space guard — rejects uploads with 507 if free space < 500MB (configurable via `Storage:MinimumFreeDiskBytes`)
-- [x] Rate limiting — `POST /account/login`: 5 attempts per 2 min per IP (sliding window); `POST /api/keys`: 10 per min per IP
-
----
-
 ## Roadmap
 
-See [ROADMAP.md](./ROADMAP.md) for the full plan.
-
-- [x] **Content-addressable storage** — SHA256 hashed blob paths, orphaned blob GC
-- [x] **Blazor UI** — dashboard (`/`), bucket list (`/buckets`), bucket detail + file browser (`/buckets/{name}`), drag-drop upload, per-object download/delete, API key management (`/settings`)
-- [x] **Authentication** — Identity, cookie + API key dual auth, login/logout UI, admin seeding
-- [x] **API Key system** — `X-API-Key` middleware, key management endpoints + UI
-- [x] **Dockerize** — multi-stage Dockerfile, docker-compose, multi-arch (amd64/arm64)
-- [x] **Virtual folder navigation** — prefix/delimiter listing, New Folder, ZIP download, folder delete
-- [x] **Dark mode** — system preference detection, cookie persistence, toggle in Settings
-- [ ] **S3 Compatibility** — AWS Sig V4, XML responses, aws-cli/boto3 support
-- [ ] **Multipart Upload** — 5GB+ files, Initiate/UploadPart/Complete
-- [ ] **Presigned URLs** — HMAC-SHA256 signed download + upload links
-- [ ] **User Management UI** — registration, user list, password reset
-- [ ] **Bucket Permissions** — per-bucket ACL, per-user read/write/delete
-- [ ] **Teams & Organizations** — multi-tenant, quotas, team roles
-- [ ] **Storage backends** — swap `FileSystemStorageService` for cloud storage
-- [ ] **PostgreSQL support** — swap SQLite via `IMetadataService` interface
+See [ROADMAP.md](./ROADMAP.md).
 
 ---
 
 ## CI
 
-Two automation files in `.github/`:
+### GitHub Actions (`.github/workflows/ci.yml`)
+
+Build-only gate on push to `main` and all PRs — restore → build Release → fail fast on compile errors. No tests yet.
 
 ### Dependabot (`.github/dependabot.yml`)
 
-Dependabot runs weekly on Mondays and opens PRs for:
-- **NuGet packages** — grouped into `radzen`, `ef-core`, `hangfire`, `serilog` to reduce PR noise (max 5 open at once)
-- **GitHub Actions** — keeps workflow action versions up to date
+Weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`) and GitHub Actions versions.
 
-Review and merge Dependabot PRs regularly — they're the lowest-effort way to pick up security patches in dependencies.
+### Docker Hub
 
-### GitHub Actions (`.github/workflows/ci.yml`)
+Published at [`meritonaliu/objex`](https://hub.docker.com/r/meritonaliu/objex) — multi-arch (amd64/arm64):
 
-| Trigger | Runner |
-|---------|--------|
-| Push to `main`, any PR | `ubuntu-latest` (GitHub-hosted) |
-
-Build-only gate: restore → build Release → fail fast on compile errors. No tests yet.
+```bash
+docker pull meritonaliu/objex:latest
+docker compose up -d
+```
 
 ## Testing
 

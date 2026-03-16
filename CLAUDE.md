@@ -349,25 +349,31 @@ Keyboard handling: text-input dialogs (`CreateBucketDialog`, `CreateApiKeyDialog
 
 **Dark mode:** Theme stored in `objex-theme` cookie. `App.razor` reads cookie via `IHttpContextAccessor` server-side and passes to `<RadzenTheme>` — no flash on load. An inline `<script>` in `<head>` sets the cookie from `prefers-color-scheme` on first visit. Toggle in Settings page uses `ThemeService.SetTheme()` + JS cookie write. `ThemeService` is registered as `AddScoped<ThemeService>()` — do NOT use `AddRadzenCookieThemeService` (it fights the server-side rendering). Read initial switch state from cookie via JS in `OnAfterRenderAsync`, not from `ThemeService.Theme` (which is null on Blazor init).
 
+**Font:** Inter, self-hosted in `wwwroot/fonts/` (weights 300–700). Applied globally via `:root { --rz-body-font-family: 'Inter' }` + `*:not(.material-icons):not(.material-icons-outlined):not([class*="rz-icon"]):not(i)` — the `:not()` exclusions are critical to prevent Material Icons from rendering as text.
+
+**Theme colors:** Teal primary via CSS variable overrides in `app.css` loaded after `<RadzenTheme>` in `App.razor` — load order matters, loading before causes Radzen to overwrite the overrides. Overrides only `--rz-primary*` variables; do NOT override base background/text colors as they break light mode.
+
+**Profile page** (`/profile`): username (alphanumeric only, no spaces, validated per-keystroke via `@oninput`), email, and password change sections. Uses `visibility: hidden` (not `@if`) for error messages to prevent layout shift. After username save: `forceLoad: true` reload to refresh NavMenu. After password change: forced logout (`Navigation.NavigateTo("/account/logout", forceLoad: true)`).
+
 ---
 
 ## Endpoint Routes
 
 ```
-# Buckets (require ApiPolicy)
+# Buckets (require ApiPolicy) — port 9001
 GET    /api/buckets               → list buckets
 POST   /api/buckets?name={name}   → create bucket
 GET    /api/buckets/{name}        → get bucket
 DELETE /api/buckets/{name}        → delete bucket
 
-# Objects (require ApiPolicy)
+# Objects (require ApiPolicy) — port 9001
 PUT    /api/objects/{bucket}/{*key}          → upload object
 GET    /api/objects/{bucket}/{*key}          → download object
 DELETE /api/objects/{bucket}/{*key}          → delete object
 GET    /api/objects/{bucket}/                → list objects; accepts ?prefix=&delimiter= query params; returns { objects, commonPrefixes }
 GET    /api/objects/{bucket}/download        → ZIP download; accepts ?prefix= to scope to a virtual folder
 
-# API Keys (require ApiPolicy)
+# API Keys (require ApiPolicy) — port 9001
 POST   /api/keys          → create key; response includes key value (shown once)
 GET    /api/keys          → list user's keys (no key value exposed)
 DELETE /api/keys/{id}     → delete key
@@ -381,6 +387,24 @@ GET    /health            → liveness (200 if process is up, no checks); also a
 GET    /health/ready      → readiness (checks DB connectivity + blob storage writability)
 GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
 GET    /scalar/v1         → interactive API docs (require auth)
+
+# S3-Compatible API — port 9000 (AllowAnonymous — Sig V4 auth in progress)
+# Single shared RouteGroupBuilder: app.MapGroup("/").RequireHost("*:9000").WithTags("S3").AllowAnonymous()
+GET    /                        → list all buckets (S3 ListAllMyBuckets XML)
+HEAD   /{bucket}                → bucket exists check (200/404)
+PUT    /{bucket}                → create bucket (S3 XML response)
+DELETE /{bucket}                → delete bucket
+PUT    /{bucket}/{*key}         → upload object (returns ETag header)
+GET    /{bucket}/{*key}         → download object; ?download=true forces application/octet-stream attachment
+HEAD   /{bucket}/{*key}         → object metadata (ETag, Content-Length, Content-Type headers)
+DELETE /{bucket}/{*key}         → delete object (204)
+
+# S3 implementation details:
+# - S3Xml helper (ObjeX.Api/S3/S3Xml.cs) — XML response builders, SecurityElement.Escape() for injection prevention
+# - S3Errors constants (ObjeX.Api/S3/S3Errors.cs) — S3 error code strings
+# - Config: S3:PublicUrl = "http://localhost:9000" — used by Blazor UI to build download links
+# - Objects.razor downloads via: {S3:PublicUrl}/{bucket}/{key}?download=true
+# - ZIP downloads still use native API: /api/objects/{bucket}/download?prefix=
 ```
 
 ---
@@ -404,12 +428,11 @@ GET    /scalar/v1         → interactive API docs (require auth)
 
 ## CI
 
+**`ci.yml`** — build gate, GitHub-hosted runner (`ubuntu-latest`). Triggers on push to `main` and all PRs. Steps: checkout → setup .NET (from `global.json`) → restore → build Release. No tests yet.
+
 **`.github/dependabot.yml`** — weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`, max 5 open) and GitHub Actions versions.
 
-**`ci.yml`** — build gate, GitHub-hosted runner (`ubuntu-latest`)
-- Triggers: push to `main`, any PR
-- Steps: checkout → setup .NET (from `global.json`) → restore → build Release
-- No tests yet (nothing to run)
+**No CD pipeline** — deployments are manual (Docker Hub image: `meritonaliu/objex:latest`).
 
 **`.dockerignore`** is present at repo root. It excludes `src/**/bin/`, `src/**/obj/`, `data/`, `.git/`, IDE folders, and local config overrides (`appsettings.Development.json`). Without it, `docker build` would send ~230MB of build artifacts as context on every build.
 
