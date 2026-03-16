@@ -1,3 +1,23 @@
+/* Inter font */
+:root { --rz-body-font-family: 'Inter', sans-serif; }
+*:not(.material-icons):not(.material-icons-outlined):not([class*="rz-icon"]):not(i) {
+    font-family: 'Inter', sans-serif !important;
+}
+
+/* ObjeX teal primary — applies to both light and dark */
+:root {
+    --rz-primary: #14B8A6;
+    --rz-primary-light: #2DD4BF;
+    --rz-primary-lighter: rgba(20, 184, 166, 0.15);
+    --rz-primary-dark: #0F766E;
+    --rz-primary-darker: #0A6658;
+    --rz-on-primary: #0D1117;
+    --rz-on-primary-light: #0D1117;
+    --rz-on-primary-lighter: #14B8A6;
+    --rz-on-primary-dark: #ffffff;
+    --rz-on-primary-darker: #ffffff;
+}
+
 .rz-notification {
     top: auto !important;
     bottom: 1rem !important;
