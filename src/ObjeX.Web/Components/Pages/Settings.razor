@@ -1,12 +1,4 @@
 @page "/settings"
-@using Microsoft.EntityFrameworkCore
-@using ObjeX.Core.Models
-@using ObjeX.Infrastructure.Data
-@using ObjeX.Web.Components.Dialogs
-@inject ObjeXDbContext Db
-@inject AuthenticationStateProvider AuthStateProvider
-@inject DialogService DialogService
-@inject NotificationService NotificationService
 @inject ThemeService ThemeService
 @inject IJSRuntime JS
 
@@ -25,65 +17,10 @@
             </RadzenStack>
         </RadzenStack>
     </RadzenCard>
-
-    <RadzenCard>
-        <RadzenStack Gap="1rem">
-            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center"
-                         JustifyContent="JustifyContent.SpaceBetween">
-                <RadzenText TextStyle="TextStyle.H6">API Keys</RadzenText>
-                <RadzenButton Text="Create Key" Icon="add" ButtonStyle="ButtonStyle.Primary" Click="@OnCreateKey" />
-            </RadzenStack>
-
-            <RadzenText TextStyle="TextStyle.Body2" Style="color:var(--rz-text-secondary-color)">
-                API keys let external clients authenticate using the <code>X-API-Key</code> request header.
-            </RadzenText>
-
-            <RadzenDataGrid Data="@_keys" TItem="ApiKey" AllowSorting="true" EmptyText="No API keys yet.">
-                <Columns>
-                    <RadzenDataGridColumn TItem="ApiKey" Property="Name" Title="Name" />
-                    <RadzenDataGridColumn TItem="ApiKey" Property="KeyPrefix" Title="Prefix">
-                        <Template Context="key"><code>@(key.KeyPrefix)...</code></Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="ApiKey" Property="CreatedAt" Title="Created"
-                                         FormatString="{0:yyyy-MM-dd}" />
-                    <RadzenDataGridColumn TItem="ApiKey" Property="ExpiresAt" Title="Expires">
-                        <Template Context="key">
-                            @if (key.ExpiresAt < DateTime.UtcNow)
-                            {
-                                <RadzenBadge Text="Expired" BadgeStyle="BadgeStyle.Danger" />
-                            }
-                            else
-                            {
-                                @key.ExpiresAt.ToString("yyyy-MM-dd")
-                            }
-                        </Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="ApiKey" Property="LastUsedAt" Title="Last Used">
-                        <Template Context="key">@(key.LastUsedAt?.ToString("yyyy-MM-dd HH:mm") ?? "Never")</Template>
-                    </RadzenDataGridColumn>
-                    <RadzenDataGridColumn TItem="ApiKey" Title="" Width="80px" Sortable="false">
-                        <Template Context="key">
-                            <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
-                                          Click="@(() => OnDeleteKey(key))" />
-                        </Template>
-                    </RadzenDataGridColumn>
-                </Columns>
-            </RadzenDataGrid>
-        </RadzenStack>
-    </RadzenCard>
 </RadzenStack>
 
 @code {
-    List<ApiKey> _keys = [];
-    string _userId = string.Empty;
     bool _isDark;
-
-    protected override async Task OnInitializedAsync()
-    {
-        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
-        _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
-        await LoadKeys();
-    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -98,50 +35,5 @@
         var theme = value ? "material-dark" : "material";
         ThemeService.SetTheme(theme);
         await JS.InvokeVoidAsync("eval", $"document.cookie='objex-theme={theme};path=/;max-age=31536000'");
-    }
-
-    async Task LoadKeys()
-    {
-        _keys = await Db.ApiKeys
-            .Where(k => k.UserId == _userId)
-            .OrderByDescending(k => k.CreatedAt)
-            .ToListAsync();
-    }
-
-    async Task OnCreateKey()
-    {
-        var result = await DialogService.OpenAsync<CreateApiKeyDialog>("Create API Key");
-        if (result is not CreateApiKeyDialog.CreateApiKeyDialogResult req) return;
-
-        var expiresAt = req.ExpiresInDays.HasValue
-            ? DateTime.UtcNow.AddDays(req.ExpiresInDays.Value)
-            : DateTime.UtcNow.AddYears(10);
-
-        var (key, plainText) = ApiKey.Create(req.Name, _userId, expiresAt);
-
-        Db.ApiKeys.Add(key);
-        await Db.SaveChangesAsync();
-        await LoadKeys();
-
-        await DialogService.OpenAsync<ShowApiKeyDialog>(
-            "API Key Created",
-            new Dictionary<string, object?> { { "ApiKey", plainText } },
-            new DialogOptions { CloseDialogOnOverlayClick = false, ShowClose = false });
-    }
-
-    async Task OnDeleteKey(ApiKey key)
-    {
-        var confirmed = await DialogService.Confirm(
-            $"Delete \"{key.Name}\"? Any clients using this key will lose access immediately.",
-            "Delete API Key",
-            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel", CloseDialogOnOverlayClick = true });
-
-        if (confirmed != true) return;
-
-        Db.ApiKeys.Remove(key);
-        await Db.SaveChangesAsync();
-        await LoadKeys();
-
-        NotificationService.Notify(NotificationSeverity.Success, "Key deleted", key.Name);
     }
 }

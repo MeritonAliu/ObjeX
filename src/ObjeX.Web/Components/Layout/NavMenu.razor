@@ -1,12 +1,12 @@
 @inject NavigationManager Navigation
 @inject AuthenticationStateProvider AuthStateProvider
+@using Microsoft.AspNetCore.Components.Authorization
 
 <RadzenStack Style="height:100%; padding:0.5rem 0" JustifyContent="JustifyContent.SpaceBetween">
     <RadzenPanelMenu>
         <RadzenPanelMenuItem Text="Dashboard" Path="/" Icon="dashboard" />
         <RadzenPanelMenuItem Text="Buckets" Path="/buckets" Icon="storage" />
-        <RadzenPanelMenuItem Text="API Docs" Path="/scalar/v1" Icon="code" />
-        <RadzenPanelMenuItem Text="Hangfire" Path="/hangfire" Icon="schedule" />
+<RadzenPanelMenuItem Text="Hangfire" Path="/hangfire" Icon="schedule" />
         <RadzenPanelMenuItem Text="Settings" Path="/settings" Icon="build" />
     </RadzenPanelMenu>
 

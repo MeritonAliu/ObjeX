@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
-using ObjeX.Api.Auth;
 using ObjeX.Core.Interfaces;
 using ObjeX.Infrastructure.Data;
 using ObjeX.Infrastructure.Hashing;
@@ -14,13 +13,12 @@ using ObjeX.Infrastructure.Jobs;
 using ObjeX.Infrastructure.Metadata;
 using ObjeX.Infrastructure.Storage;
 using ObjeX.Web.Components;
+using ObjeX.Api.Auth;
 using ObjeX.Api.Endpoints;
 using ObjeX.Api.Endpoints.S3Endpoints;
-using ObjeX.Api.Middleware;
 using ObjeX.Core.Models;
 
 using Radzen;
-using Scalar.AspNetCore;
 using Serilog;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -45,13 +43,6 @@ builder.Services.AddSingleton<FileSystemStorageService>(sp =>
     return new FileSystemStorageService(basePath, sp.GetRequiredService<IHashService>(), sp.GetRequiredService<ILogger<FileSystemStorageService>>());
 });
 builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService<FileSystemStorageService>());
-builder.Services.AddControllers()
-    .AddJsonOptions(options =>
-    {
-        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
-        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
-    });
-builder.Services.AddOpenApi();
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<ObjeXDbContext>(tags: ["ready"])
     .AddCheck<BlobStorageHealthCheck>("blob_storage", tags: ["ready"]);
@@ -81,18 +72,9 @@ builder.Services.AddAuthentication(options =>
 {
     options.DefaultScheme = IdentityConstants.ApplicationScheme;
     options.DefaultChallengeScheme = IdentityConstants.ApplicationScheme;
-})
-.AddBearerToken(IdentityConstants.BearerScheme);
-
-builder.Services.AddAuthorization(options =>
-{
-    options.AddPolicy("ApiPolicy", policy =>
-    {
-        policy.RequireAuthenticatedUser();
-    });
 });
-builder.Services.AddSingleton<IEmailSender<User>, NoOpEmailSender>();
 
+builder.Services.AddAuthorization();
 builder.Services.ConfigureApplicationCookie(options =>
 {
     options.Events.OnRedirectToLogin = ctx =>
@@ -265,7 +247,6 @@ app.Use(async (ctx, next) =>
     await next();
 });
 app.UseAuthentication();
-app.UseMiddleware<ApiKeyAuthenticationMiddleware>();
 app.UseAuthorization();
 
 app.UseAntiforgery();
@@ -303,11 +284,6 @@ RecurringJob.AddOrUpdate<VerifyBlobIntegrityJob>(
     job => job.ExecuteAsync(),
     Cron.Weekly(DayOfWeek.Sunday, 4)); // weekly Sunday 04:00 UTC (1h after cleanup)
 
-app.MapOpenApi();
-app.MapScalarApiReference(options =>
-{
-    options.WithTitle("ObjeX API");
-}).RequireAuthorization();
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live");
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
@@ -318,19 +294,13 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapControllers();
-
-app.MapApiKeyEndpoints().RequireAuthorization("ApiPolicy");
-
-app.MapDownloadEndpoints().RequireAuthorization("ApiPolicy");
+app.MapDownloadEndpoints().RequireAuthorization();
 
 // S3 Endpoints — single shared group, port 9000 only
 // TODO: replace AllowAnonymous with S3 Sig V4 auth when implemented
-var s3Group = app.MapGroup("/").RequireHost("*:9000").WithTags("S3").AllowAnonymous();
+var s3Group = app.MapGroup("/").RequireHost("*:9000").AllowAnonymous();
 app.MapS3BucketEndpoints(s3Group);
 app.MapS3ObjectEndpoints(s3Group);
-
-app.MapIdentityApi<User>();
 
 app.MapAccountEndpoints();
 
