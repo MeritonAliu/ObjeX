@@ -6,9 +6,6 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <base href="/" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
     <ResourcePreloader />
     <link rel="stylesheet" href="@Assets["ObjeX.Web.styles.css"]" />
     <ImportMap />
@@ -19,7 +16,7 @@
     <link rel="manifest" href="site.webmanifest" />
     <HeadOutlet @rendermode="InteractiveServer" />
     <script>if (!document.cookie.includes('objex-theme=')) { document.cookie = 'objex-theme=material-dark; path=/; max-age=31536000'; }</script>
-    <RadzenTheme Theme="@(HttpContextAccessor.HttpContext?.Request.Cookies["objex-theme"] ?? "material")" />
+    <RadzenTheme Theme="@(HttpContextAccessor.HttpContext?.Request.Cookies["objex-theme"] ?? "material-dark")" />
     <link rel="stylesheet" href="@Assets["app.css"]" />
 </head>
 

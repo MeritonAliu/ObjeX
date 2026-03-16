@@ -1,3 +1,10 @@
+/* Inter — self-hosted */
+@font-face { font-family: 'Inter'; src: url('fonts/inter-300.ttf') format('truetype'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-400.ttf') format('truetype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-500.ttf') format('truetype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-600.ttf') format('truetype'); font-weight: 600; font-display: swap; }
+@font-face { font-family: 'Inter'; src: url('fonts/inter-700.ttf') format('truetype'); font-weight: 700; font-display: swap; }
+
 /* Inter font */
 :root { --rz-body-font-family: 'Inter', sans-serif; }
 *:not(.material-icons):not(.material-icons-outlined):not([class*="rz-icon"]):not(i) {
