@@ -94,15 +94,17 @@
 - [ ] S3 error response XML format for all error cases
 - [ ] Compatibility testing with `aws-cli`, `boto3`, `s3cmd`
 
-### 3. Multipart Upload
-- `POST /{bucket}/{key}?uploads` — InitiateMultipartUpload
-- `PUT /{bucket}/{key}?partNumber={n}&uploadId={id}` — UploadPart
-- `POST /{bucket}/{key}?uploadId={id}` — CompleteMultipartUpload
-- `DELETE /{bucket}/{key}?uploadId={id}` — AbortMultipartUpload
-- Temporary part storage, part ETag tracking
-- Atomic final object assembly
-- 5 GB+ file support
-- Garbage collection for abandoned uploads
+### 3. Multipart Upload ✅
+- [x] `POST /{bucket}/{key}?uploads` — InitiateMultipartUpload
+- [x] `PUT /{bucket}/{key}?partNumber={n}&uploadId={id}` — UploadPart
+- [x] `POST /{bucket}/{key}?uploadId={id}` — CompleteMultipartUpload
+- [x] `DELETE /{bucket}/{key}?uploadId={id}` — AbortMultipartUpload
+- [x] Temporary part storage under `_multipart/{uploadId}/{partNumber}.part`
+- [x] Part ETag tracking (MD5 per part, multipart ETag format `md5-{partCount}`)
+- [x] Atomic final object assembly (tmp → move)
+- [x] 5 GB+ file support (no size limit beyond disk space)
+- [x] Range request support — `enableRangeProcessing: true` fixes AWS CLI parallel downloads
+- [x] Weekly Hangfire job cleans abandoned uploads older than 7 days (`CleanupAbandonedMultipartJob`)
 
 ### 4. Presigned URLs
 - HMAC-SHA256 signed URLs with expiry

@@ -381,9 +381,14 @@ HEAD   /{bucket}                → bucket exists check (200/404)
 PUT    /{bucket}                → create bucket (S3 XML response)
 DELETE /{bucket}                → delete bucket
 PUT    /{bucket}/{*key}         → upload object (returns ETag header)
-GET    /{bucket}/{*key}         → download object; ?download=true forces application/octet-stream attachment
+PUT    /{bucket}/{*key}?partNumber=N&uploadId=X → UploadPart; upserts part, returns ETag header
+GET    /{bucket}/{*key}         → download object; ?download=true forces application/octet-stream attachment; Range requests supported
+GET    /{bucket}/{*key}?uploadId=X → ListParts XML
 HEAD   /{bucket}/{*key}         → object metadata (ETag, Content-Length, Content-Type headers)
 DELETE /{bucket}/{*key}         → delete object (204)
+DELETE /{bucket}/{*key}?uploadId=X → AbortMultipartUpload; deletes parts + session
+POST   /{bucket}/{*key}?uploads → InitiateMultipartUpload; returns UploadId XML
+POST   /{bucket}/{*key}?uploadId=X → CompleteMultipartUpload; assembles parts, saves object, returns ETag
 
 # S3 implementation details:
 # - SigV4Parser (ObjeX.Api/S3/SigV4Parser.cs) — parses Authorization header + presigned query params
@@ -391,9 +396,12 @@ DELETE /{bucket}/{*key}         → delete object (204)
 # - SigV4AuthMiddleware (ObjeX.Api/Middleware/) — orchestrates auth: lookup → timestamp → sig → payload hash
 # - S3Xml helper (ObjeX.Api/S3/S3Xml.cs) — XML response builders, SecurityElement.Escape() for injection prevention
 # - S3Errors constants (ObjeX.Api/S3/S3Errors.cs) — S3 error code strings
-# - Config: S3:PublicUrl = "http://localhost:9000" — used by Blazor UI to build download links
-# - Objects.razor downloads via: {S3:PublicUrl}/{bucket}/{key}?download=true
-# - ZIP downloads still use native API: /api/objects/{bucket}/download?prefix=
+# - S3MultipartEndpoint (ObjeX.Api/Endpoints/S3Endpoints/) — Initiate + Complete (single MapPost dispatch on ?uploads vs ?uploadId)
+# - Parts stored at {BasePath}/_multipart/{uploadId}/{partNumber}.part; cleaned up after Complete or Abort
+# - Final ETag: MD5(binary concat of part MD5 bytes) + "-" + partCount (S3 multipart format)
+# - CleanupAbandonedMultipartJob — weekly Hangfire job, deletes uploads older than 7 days
+# - UI single-file downloads use /api/objects/{bucket}/{*key}?download=true on port 9001 (cookie auth)
+# - ZIP downloads use /api/objects/{bucket}/download?prefix= on port 9001
 ```
 
 ---
@@ -449,8 +457,8 @@ dotnet ef database update  # or just run the app — auto-migrates
 
 1. ~~**Dockerize**~~ ✅ — multi-stage Dockerfile, docker-compose, volume mounts, multi-arch
 2. ~~**Object listing with prefix/delimiter**~~ ✅ — virtual folder nav, New Folder, ZIP download, folder delete
-3. **S3 Compatibility** — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes
-4. **Multipart Upload** — Initiate/UploadPart/Complete endpoints, temp part storage, 5GB+ support
+3. ~~**S3 Compatibility**~~ ✅ — `/{bucket}/{key}` routes, XML responses, AWS Sig V4, S3 error codes
+4. ~~**Multipart Upload**~~ ✅ — Initiate/UploadPart/Complete/Abort, part storage, multipart ETag, Range support, abandoned upload cleanup
 5. **Presigned URLs** — HMAC-SHA256 signed URLs, expiry enforcement, upload + download
 6. ~~**Enhanced Blazor UI**~~ ✅ — folder nav, dark mode (system preference + cookie persistence)
 7. **Object Tags** — key-value tags, tag-based search, lifecycle/retention policies
