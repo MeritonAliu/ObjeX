@@ -58,16 +58,20 @@ public class SigV4AuthMiddleware(RequestDelegate next, ILogger<SigV4AuthMiddlewa
         if (!valid)
         {
             logger.LogWarning("SigV4: signature mismatch for {KeyId}", safeKeyId);
+            var safeCanonical = diag!.CanonicalRequest?.Replace("\r", "").Replace("\n", "\\n");
+            var safeSTS = diag.StringToSign?.Replace("\r", "").Replace("\n", "\\n");
+            var safeExpected = diag.ExpectedSignature?.Replace("\r", "").Replace("\n", "");
+            var safeClient = diag.ClientSignature?.Replace("\r", "").Replace("\n", "");
             logger.LogDebug(
                 "SigV4 mismatch details for {KeyId}\n" +
                 "=== Canonical Request ===\n{CR}\n" +
                 "=== String to Sign ===\n{STS}\n" +
                 "=== Expected: {Expected}  Got: {Got}",
                 safeKeyId,
-                diag!.CanonicalRequest,
-                diag.StringToSign,
-                diag.ExpectedSignature,
-                diag.ClientSignature);
+                safeCanonical,
+                safeSTS,
+                safeExpected,
+                safeClient);
 
             await WriteError(context, S3Errors.SignatureDoesNotMatch,
                 "The request signature we calculated does not match the signature you provided.", 403);
