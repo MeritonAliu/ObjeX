@@ -305,6 +305,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
 app.MapDownloadEndpoints();
+app.MapPresignEndpoints();
 
 // S3 Endpoints — port 9000 only, auth via SigV4AuthMiddleware above
 var s3Group = app.MapGroup("/").RequireHost("*:9000").RequireAuthorization();

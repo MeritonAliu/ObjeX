@@ -2,12 +2,18 @@
 @using ObjeX.Core.Interfaces
 @using ObjeX.Core.Models
 @using ObjeX.Web.Components.Dialogs
+@using ObjeX.Infrastructure.Data
+@using ObjeX.Core.Utilities
+@using Microsoft.EntityFrameworkCore
 @inject IMetadataService MetadataService
 @inject IObjectStorageService StorageService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
 @inject NavigationManager Navigation
 @inject IConfiguration Configuration
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ObjeXDbContext Db
+@inject IJSRuntime JS
 
 <PageTitle>@BucketName — ObjeX</PageTitle>
 
@@ -58,7 +64,7 @@
             <RadzenDataGridColumn TItem="ListRow" Title="Uploaded">
                 <Template Context="row">@(row.IsFolder ? "" : row.Object!.CreatedAt.ToString("yyyy-MM-dd HH:mm"))</Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="ListRow" Title="" Width="120px" Sortable="false">
+            <RadzenDataGridColumn TItem="ListRow" Title="" Width="160px" Sortable="false">
                 <Template Context="row">
                     @if (row.IsFolder)
                     {
@@ -73,6 +79,9 @@
                         <a href="@($"/api/objects/{BucketName}/{row.Object!.Key}?download=true")" download="@Path.GetFileName(row.Object!.Key)" target="_blank">
                             <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Text" />
                         </a>
+                        <RadzenButton Icon="link" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Text"
+                                      Click="@(() => CopyPresignedLink(row.Object!))"
+                                      title="Copy presigned link (valid 1 hour)" />
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
                                       Click="@(() => OnDeleteObject(row.Object!))" />
                     }
@@ -273,5 +282,29 @@
         {
             NotificationService.Notify(NotificationSeverity.Error, "Failed to delete object", ex.Message);
         }
+    }
+
+    async Task CopyPresignedLink(BlobObject obj)
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+        var credential = await Db.S3Credentials.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId == userId);
+
+        if (credential is null)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "No S3 credential", "Create one in Settings first.");
+            return;
+        }
+
+        var s3BaseUrl = Configuration["S3:PublicUrl"] ?? "http://localhost:9000";
+        var url = PresignedUrlGenerator.Generate(
+            s3BaseUrl, BucketName, obj.Key,
+            credential.AccessKeyId, credential.SecretAccessKey,
+            expiresSeconds: 3600);
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", url);
+        NotificationService.Notify(NotificationSeverity.Success, "Link copied", "Valid for 1 hour.");
     }
 }
