@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+
 using ObjeX.Api.S3;
 using ObjeX.Core.Interfaces;
 using ObjeX.Core.Models;
@@ -18,8 +20,61 @@ public static class S3ObjectEndpoint
             IConfiguration config,
             IMetadataService metadata,
             IObjectStorageService storage,
-            FileSystemStorageService fs) =>
+            FileSystemStorageService fs,
+            ObjeX.Infrastructure.Data.ObjeXDbContext db) =>
         {
+            // Multipart UploadPart: PUT /{bucket}/{*key}?partNumber=N&uploadId=X
+            if (request.Query.TryGetValue("partNumber", out var pnStr) &&
+                request.Query.TryGetValue("uploadId", out var uIdStr))
+            {
+                if (!int.TryParse(pnStr, out var partNumber) || partNumber < 1 || partNumber > 10000)
+                    return S3Xml.Error(S3Errors.InvalidArgument, "Part number must be between 1 and 10000.");
+
+                if (!Guid.TryParse(uIdStr, out var uploadId))
+                    return S3Xml.Error(S3Errors.NoSuchUpload, "The specified upload does not exist.", 404);
+
+                var upload = await db.MultipartUploads.AsNoTracking()
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.BucketName == bucket && u.Key == key);
+
+                if (upload is null)
+                    return S3Xml.Error(S3Errors.NoSuchUpload, "The specified upload does not exist.", 404);
+
+                var partMinFreeBytes = config.GetValue<long>("Storage:MinimumFreeDiskBytes", 500 * 1024 * 1024);
+                if (fs.GetAvailableFreeSpace() < partMinFreeBytes)
+                    return S3Xml.Error(S3Errors.EntityTooLarge, "Insufficient disk space.", 507);
+
+                var (partPath, partEtag) = await fs.StorePartAsync(uploadId, partNumber, request.Body, request.HttpContext.RequestAborted);
+                var partSize = new FileInfo(partPath).Length;
+
+                // Upsert: replace existing part with same number if re-uploaded
+                var existing = await db.MultipartUploadParts
+                    .FirstOrDefaultAsync(p => p.UploadId == uploadId && p.PartNumber == partNumber);
+
+                if (existing is not null)
+                {
+                    existing.ETag = partEtag;
+                    existing.Size = partSize;
+                    existing.StoragePath = partPath;
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
+                else
+                {
+                    db.MultipartUploadParts.Add(new ObjeX.Core.Models.MultipartUploadPart
+                    {
+                        UploadId = uploadId,
+                        PartNumber = partNumber,
+                        ETag = partEtag,
+                        Size = partSize,
+                        StoragePath = partPath
+                    });
+                }
+
+                await db.SaveChangesAsync();
+
+                request.HttpContext.Response.Headers.ETag = $"\"{partEtag}\"";
+                return Results.StatusCode(200);
+            }
+
             if (ObjectKeyValidator.GetValidationError(key) is { } keyError)
                 return S3Xml.Error(S3Errors.InvalidArgument, keyError);
 
@@ -54,10 +109,15 @@ public static class S3ObjectEndpoint
             string bucket,
             string key,
             bool? download,
-            HttpContext ctx,
+            HttpRequest request,
             IMetadataService metadata,
-            IObjectStorageService storage) =>
+            IObjectStorageService storage,
+            ObjeX.Infrastructure.Data.ObjeXDbContext db) =>
         {
+            // ListParts: GET /{bucket}/{*key}?uploadId=X
+            if (request.Query.TryGetValue("uploadId", out var listPartsUploadId))
+                return await S3MultipartEndpoint.HandleListParts(bucket, key, listPartsUploadId!, db);
+
             if (ObjectKeyValidator.GetValidationError(key) is { } keyError)
                 return S3Xml.Error(S3Errors.InvalidArgument, keyError);
 
@@ -65,16 +125,22 @@ public static class S3ObjectEndpoint
             if (obj is null)
                 return S3Xml.Error(S3Errors.NoSuchKey, "The specified key does not exist.", 404);
 
-            ctx.Response.Headers.ETag = $"\"{obj.ETag}\"";
-            ctx.Response.Headers.ContentLength = obj.Size;
-            ctx.Response.Headers.LastModified = obj.UpdatedAt.ToString("R");
             var stream = await storage.RetrieveAsync(bucket, key);
             var fileName = Path.GetFileName(obj.Key);
 
             // ?download=true forces browser download regardless of content type
             var contentType = download == true ? "application/octet-stream" : obj.ContentType;
             var downloadName = download == true ? fileName : null;
-            return Results.File(stream, contentType, fileDownloadName: downloadName);
+            var entityTag = new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{obj.ETag}\"");
+
+            // enableRangeProcessing: true — S3 clients (AWS CLI) use Range requests for parallel
+            // multipart downloads; without this the full file is returned for every Range request
+            // and the client concatenates them, producing a file N× the expected size.
+            return Results.File(stream, contentType,
+                fileDownloadName: downloadName,
+                lastModified: obj.UpdatedAt,
+                entityTag: entityTag,
+                enableRangeProcessing: true);
         });
 
         s3.MapMethods("/{bucket}/{*key}", ["HEAD"], async (
@@ -97,9 +163,30 @@ public static class S3ObjectEndpoint
         s3.MapDelete("/{bucket}/{*key}", async (
             string bucket,
             string key,
+            HttpRequest request,
             IMetadataService metadata,
-            IObjectStorageService storage) =>
+            IObjectStorageService storage,
+            FileSystemStorageService fs,
+            ObjeX.Infrastructure.Data.ObjeXDbContext db) =>
         {
+            // Multipart Abort: DELETE /{bucket}/{*key}?uploadId=X
+            if (request.Query.TryGetValue("uploadId", out var uIdStr))
+            {
+                if (!Guid.TryParse(uIdStr, out var uploadId))
+                    return S3Xml.Error(S3Errors.NoSuchUpload, "The specified upload does not exist.", 404);
+
+                var upload = await db.MultipartUploads
+                    .FirstOrDefaultAsync(u => u.Id == uploadId && u.BucketName == bucket && u.Key == key);
+
+                if (upload is null)
+                    return S3Xml.Error(S3Errors.NoSuchUpload, "The specified upload does not exist.", 404);
+
+                await fs.DeletePartsAsync(uploadId);
+                db.MultipartUploads.Remove(upload);
+                await db.SaveChangesAsync();
+                return Results.StatusCode(204);
+            }
+
             // S3 spec: DELETE returns 204 even if object does not exist
             if (await metadata.ExistsObjectAsync(bucket, key))
             {

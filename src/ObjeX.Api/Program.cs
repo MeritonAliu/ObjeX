@@ -127,6 +127,7 @@ builder.Services.AddHangfire(config => config
 builder.Services.AddHangfireServer();
 builder.Services.AddScoped<CleanupOrphanedBlobsJob>();
 builder.Services.AddScoped<VerifyBlobIntegrityJob>();
+builder.Services.AddScoped<CleanupAbandonedMultipartJob>();
 
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents()
@@ -288,6 +289,11 @@ RecurringJob.AddOrUpdate<VerifyBlobIntegrityJob>(
     job => job.ExecuteAsync(),
     Cron.Weekly(DayOfWeek.Sunday, 4)); // weekly Sunday 04:00 UTC (1h after cleanup)
 
+RecurringJob.AddOrUpdate<CleanupAbandonedMultipartJob>(
+    "cleanup-abandoned-multipart",
+    job => job.ExecuteAsync(),
+    Cron.Weekly(DayOfWeek.Sunday, 5)); // weekly Sunday 05:00 UTC
+
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live");
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions
@@ -298,12 +304,13 @@ app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.Health
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
-app.MapDownloadEndpoints().RequireAuthorization();
+app.MapDownloadEndpoints();
 
 // S3 Endpoints — port 9000 only, auth via SigV4AuthMiddleware above
 var s3Group = app.MapGroup("/").RequireHost("*:9000").RequireAuthorization();
 app.MapS3BucketEndpoints(s3Group);
 app.MapS3ObjectEndpoints(s3Group);
+app.MapS3MultipartEndpoints(s3Group);
 
 app.MapAccountEndpoints();
 

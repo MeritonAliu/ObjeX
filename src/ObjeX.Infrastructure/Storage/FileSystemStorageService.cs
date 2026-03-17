@@ -1,6 +1,9 @@
+using System.Security.Cryptography;
+
 using Microsoft.Extensions.Logging;
 
 using ObjeX.Core.Interfaces;
+using ObjeX.Core.Utilities;
 
 namespace ObjeX.Infrastructure.Storage;
 
@@ -11,6 +14,7 @@ public class FileSystemStorageService : IObjectStorageService
     private readonly ILogger<FileSystemStorageService> _logger;
 
     private static readonly TimeSpan StaleTmpThreshold = TimeSpan.FromHours(1);
+    private static readonly TimeSpan StaleMultipartThreshold = TimeSpan.FromHours(48);
 
     public FileSystemStorageService(string basePath, IHashService hashService, ILogger<FileSystemStorageService> logger)
     {
@@ -44,6 +48,30 @@ public class FileSystemStorageService : IObjectStorageService
 
         if (deleted > 0)
             _logger.LogInformation("Deleted {Count} stale .tmp blob file(s) on startup", deleted);
+
+        var multipartRoot = Path.Combine(BasePath, "_multipart");
+        if (!Directory.Exists(multipartRoot)) return;
+
+        var cutoff2 = DateTime.UtcNow - StaleMultipartThreshold;
+        var deletedDirs = 0;
+        foreach (var dir in Directory.EnumerateDirectories(multipartRoot))
+        {
+            try
+            {
+                if (Directory.GetLastWriteTimeUtc(dir) < cutoff2)
+                {
+                    Directory.Delete(dir, recursive: true);
+                    deletedDirs++;
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to delete stale multipart directory {Path}", dir);
+            }
+        }
+
+        if (deletedDirs > 0)
+            _logger.LogInformation("Deleted {Count} stale multipart upload director(ies) on startup", deletedDirs);
     }
 
     public async Task<string> StoreAsync(string bucketName, string key, Stream data, CancellationToken ctk = default)
@@ -103,6 +131,68 @@ public class FileSystemStorageService : IObjectStorageService
 
     public long GetAvailableFreeSpace() =>
         new DriveInfo(BasePath).AvailableFreeSpace;
+
+    public async Task<(string partPath, string etag)> StorePartAsync(
+        Guid uploadId, int partNumber, Stream data, CancellationToken ctk = default)
+    {
+        var dir = Path.Combine(BasePath, "_multipart", uploadId.ToString());
+        Directory.CreateDirectory(dir);
+        var partPath = AssertWithinBasePath(Path.Combine(dir, $"{partNumber}.part"));
+        var tmpPath = partPath + ".tmp";
+
+        string etag;
+        try
+        {
+            await using var hashingStream = new HashingStream(data);
+            await using (var fileStream = File.Create(tmpPath))
+                await hashingStream.CopyToAsync(fileStream, ctk);
+            etag = hashingStream.GetETag();
+            File.Move(tmpPath, partPath, overwrite: true);
+        }
+        catch
+        {
+            File.Delete(tmpPath);
+            throw;
+        }
+
+        return (partPath, etag);
+    }
+
+    public async Task<string> AssemblePartsAsync(
+        string bucketName, string key, IEnumerable<string> orderedPartPaths, CancellationToken ctk = default)
+    {
+        var filePath = AssertWithinBasePath(GetSafePath(bucketName, key)); // codeql[cs/path-injection]
+        var tmpPath = filePath + ".tmp";
+        Directory.CreateDirectory(Path.GetDirectoryName(filePath)!); // codeql[cs/path-injection]
+
+        try
+        {
+            await using (var dest = File.Create(tmpPath)) // codeql[cs/path-injection]
+            {
+                foreach (var partPath in orderedPartPaths)
+                {
+                    await using var src = File.OpenRead(partPath);
+                    await src.CopyToAsync(dest, ctk);
+                }
+            }
+            File.Move(tmpPath, filePath, overwrite: true); // codeql[cs/path-injection]
+        }
+        catch
+        {
+            File.Delete(tmpPath); // codeql[cs/path-injection]
+            throw;
+        }
+
+        return filePath;
+    }
+
+    public Task DeletePartsAsync(Guid uploadId)
+    {
+        var dir = Path.Combine(BasePath, "_multipart", uploadId.ToString());
+        if (Directory.Exists(dir))
+            Directory.Delete(dir, recursive: true);
+        return Task.CompletedTask;
+    }
 
     // TODO: Future — content-based deduplication: hash the file bytes instead of bucket+key,
     //       store once, reference via a content-addressed path, and track ref-counts in metadata.

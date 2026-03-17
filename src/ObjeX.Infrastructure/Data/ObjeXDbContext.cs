@@ -10,6 +10,8 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
     public DbSet<Bucket> Buckets { get; set; } = null!;
     public DbSet<BlobObject> BlobObjects { get; set; } = null!;
     public DbSet<S3Credential> S3Credentials { get; set; } = null!;
+    public DbSet<MultipartUpload> MultipartUploads { get; set; } = null!;
+    public DbSet<MultipartUploadPart> MultipartUploadParts { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -47,6 +49,23 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
                 .WithMany(b => b.Objects)
                 .HasForeignKey(e => e.BucketName)
                 .HasPrincipalKey(b => b.Name);
+        });
+
+        modelBuilder.Entity<MultipartUpload>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+        });
+
+        modelBuilder.Entity<MultipartUploadPart>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasIndex(e => new { e.UploadId, e.PartNumber }).IsUnique();
+            entity.HasOne(e => e.Upload)
+                .WithMany(u => u.Parts)
+                .HasForeignKey(e => e.UploadId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 }

@@ -14,4 +14,9 @@ public static class S3Errors
     public const string RequestExpired = "RequestExpired";
     public const string EntityTooLarge = "EntityTooLarge";
     public const string InternalError = "InternalError";
+    public const string NoSuchUpload = "NoSuchUpload";
+    public const string InvalidPart = "InvalidPart";
+    public const string InvalidPartOrder = "InvalidPartOrder";
+    public const string EntityTooSmall = "EntityTooSmall";
+    public const string MalformedXML = "MalformedXML";
 }

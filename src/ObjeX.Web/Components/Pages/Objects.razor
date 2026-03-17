@@ -70,7 +70,7 @@
                     }
                     else
                     {
-                        <a href="@($"{_s3Url}/{BucketName}/{row.Object!.Key}?download=true")" target="_blank">
+                        <a href="@($"/api/objects/{BucketName}/{row.Object!.Key}?download=true")" download="@Path.GetFileName(row.Object!.Key)" target="_blank">
                             <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Text" />
                         </a>
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
@@ -93,7 +93,6 @@
 
 @code {
     [Parameter] public string BucketName { get; set; } = string.Empty;
-    string _s3Url => Configuration["S3:PublicUrl"] ?? "http://localhost:9000";
     [SupplyParameterFromQuery(Name = "prefix")] public string? PrefixParam { get; set; }
 
     record ListRow(string Name, bool IsFolder, string? FolderPath = null, BlobObject? Object = null);

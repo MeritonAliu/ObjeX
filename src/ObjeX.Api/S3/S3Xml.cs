@@ -67,4 +67,51 @@ public static class S3Xml
         xml.AppendLine("</Error>");
         return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8, statusCode);
     }
+
+    public static IResult InitiateMultipartUpload(string bucket, string key, Guid uploadId)
+    {
+        var xml = new StringBuilder();
+        xml.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        xml.AppendLine("<InitiateMultipartUploadResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+        xml.AppendLine($"  <Bucket>{Escape(bucket)}</Bucket>");
+        xml.AppendLine($"  <Key>{Escape(key)}</Key>");
+        xml.AppendLine($"  <UploadId>{uploadId}</UploadId>");
+        xml.AppendLine("</InitiateMultipartUploadResult>");
+        return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
+    }
+
+    public static IResult CompleteMultipartUpload(string bucket, string key, string location, string etag)
+    {
+        var xml = new StringBuilder();
+        xml.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        xml.AppendLine("<CompleteMultipartUploadResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+        xml.AppendLine($"  <Location>{Escape(location)}</Location>");
+        xml.AppendLine($"  <Bucket>{Escape(bucket)}</Bucket>");
+        xml.AppendLine($"  <Key>{Escape(key)}</Key>");
+        xml.AppendLine($"  <ETag>&quot;{Escape(etag)}&quot;</ETag>");
+        xml.AppendLine("</CompleteMultipartUploadResult>");
+        return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
+    }
+
+    public static IResult ListParts(string bucket, string key, Guid uploadId, IEnumerable<MultipartUploadPart> parts)
+    {
+        var xml = new StringBuilder();
+        xml.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        xml.AppendLine("<ListPartsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+        xml.AppendLine($"  <Bucket>{Escape(bucket)}</Bucket>");
+        xml.AppendLine($"  <Key>{Escape(key)}</Key>");
+        xml.AppendLine($"  <UploadId>{uploadId}</UploadId>");
+        xml.AppendLine("  <IsTruncated>false</IsTruncated>");
+        foreach (var part in parts.OrderBy(p => p.PartNumber))
+        {
+            xml.AppendLine("  <Part>");
+            xml.AppendLine($"    <PartNumber>{part.PartNumber}</PartNumber>");
+            xml.AppendLine($"    <LastModified>{part.UpdatedAt:yyyy-MM-ddTHH:mm:ss.fffZ}</LastModified>");
+            xml.AppendLine($"    <ETag>&quot;{Escape(part.ETag)}&quot;</ETag>");
+            xml.AppendLine($"    <Size>{part.Size}</Size>");
+            xml.AppendLine("  </Part>");
+        }
+        xml.AppendLine("</ListPartsResult>");
+        return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
+    }
 }
