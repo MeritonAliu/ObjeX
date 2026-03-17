@@ -21,7 +21,6 @@ dotnet run
 Open **http://localhost:9001** — log in with `admin` / `admin`.
 
 - **Blazor UI**: http://localhost:9001
-- **API docs (Scalar)**: http://localhost:9001/scalar/v1
 - **Job dashboard**: http://localhost:9001/hangfire
 - **Health check**: http://localhost:9001/health (liveness)
 - **Health check (readiness)**: http://localhost:9001/health/ready
@@ -30,66 +29,45 @@ Open **http://localhost:9001** — log in with `admin` / `admin`.
 
 ---
 
-## API Authentication
+## Authentication
 
-All API endpoints require authentication via **cookie session** (browser) or **API key** (external clients).
+ObjeX uses two auth mechanisms on separate ports:
 
-> **Single-user app:** ObjeX is currently a single-admin-user system. There is no user registration UI — the only account is the admin seeded on first run. All authenticated requests have full access to all buckets and objects. There is no per-bucket ownership, no user isolation, and no per-key scope restrictions. A leaked API key means full access to everything. This is intentional for the current scope (personal homelab, single operator) and will change in Phase 4 (Bucket Permissions + User Management).
+| Port | Used by | Auth mechanism |
+|------|---------|----------------|
+| `9001` | Browser / Blazor UI | Cookie (ASP.NET Core Identity) |
+| `9000` | S3 clients, SDKs, CLI | AWS Signature Version 4 |
 
-### API Key
+### S3 Credentials
 
-Create a key in the Settings page (`/settings`) or via the API:
+Create credentials in **Settings → S3 Credentials**. The secret access key is shown once on creation — save it.
 
-```bash
-# 1. Log in to get a session cookie
-curl -c cookies.txt -X POST http://localhost:9001/account/login \
-  -d "login=admin&password=admin"
-
-# 2. Create an API key
-curl -b cookies.txt -X POST http://localhost:9001/api/keys \
-  -H "Content-Type: application/json" \
-  -d '{"name":"my-key","expiresInDays":365}'
-# → {"key":"obx_...","name":"my-key","expiresAt":"..."}
-
-# 3. Use the key for all subsequent requests
-export OBX_KEY="obx_..."
+```python
+# boto3
+import boto3
+s3 = boto3.client(
+    "s3",
+    endpoint_url="http://localhost:9000",
+    aws_access_key_id="OBXXXX...",
+    aws_secret_access_key="your-secret",
+)
+s3.put_object(Bucket="my-bucket", Key="hello.txt", Body=b"Hello, ObjeX!")
 ```
 
-### Using an API Key
+```csharp
+// AWS SDK for .NET
+var client = new AmazonS3Client(
+    "OBXXXX...", "your-secret",
+    new AmazonS3Config { ServiceURL = "http://localhost:9000", ForcePathStyle = true });
+await client.PutObjectAsync(new PutObjectRequest {
+    BucketName = "my-bucket", Key = "hello.txt", ContentBody = "Hello, ObjeX!" });
+```
 
 ```bash
-# Create a bucket
-curl -X POST "http://localhost:9001/api/buckets?name=my-bucket" \
-  -H "X-API-Key: $OBX_KEY"
-
-# Upload an object
-curl -X PUT http://localhost:9001/api/objects/my-bucket/hello.txt \
-  -H "X-API-Key: $OBX_KEY" \
-  --data-binary "Hello, ObjeX!"
-
-# Download it
-curl http://localhost:9001/api/objects/my-bucket/hello.txt \
-  -H "X-API-Key: $OBX_KEY"
-
-# List objects (flat)
-curl http://localhost:9001/api/objects/my-bucket/ \
-  -H "X-API-Key: $OBX_KEY"
-
-# List objects with virtual folder navigation
-curl "http://localhost:9001/api/objects/my-bucket/?prefix=images/&delimiter=/" \
-  -H "X-API-Key: $OBX_KEY"
-
-# Download a folder as ZIP
-curl "http://localhost:9001/api/objects/my-bucket/download?prefix=images/" \
-  -H "X-API-Key: $OBX_KEY" -o images.zip
-
-# Delete an object
-curl -X DELETE http://localhost:9001/api/objects/my-bucket/hello.txt \
-  -H "X-API-Key: $OBX_KEY"
-
-# Delete a bucket
-curl -X DELETE http://localhost:9001/api/buckets/my-bucket \
-  -H "X-API-Key: $OBX_KEY"
+# aws-cli
+aws s3 --endpoint-url http://localhost:9000 \
+  --aws-access-key-id OBXXXX... --aws-secret-access-key your-secret \
+  cp hello.txt s3://my-bucket/hello.txt
 ```
 
 ---
@@ -106,9 +84,7 @@ Port 9001 — UI + native API
 │  ├─ Auth endpoints (/account/login, /logout)    │
 │  └─ Scalar API Docs (/scalar/v1)               │
 │                                                 │
-│  Auth: Cookie ──┐                               │
-│                 ├─→ UseAuthorization             │
-│        API Key ─┘                               │
+│  Auth: Cookie ──→ UseAuthorization              │
 │                                                 │
 │  ┌─────────────────────────────────────────┐    │
 │  │  ./data/blobs/  (content-addressed FS)  │    │
@@ -122,7 +98,9 @@ Port 9000 — S3-compatible API
 │  ├─ HEAD/PUT/DELETE /{bucket}                   │
 │  └─ PUT/GET/HEAD/DELETE /{bucket}/{*key}        │
 │                                                 │
-│  Auth: AllowAnonymous (Sig V4 — coming soon)    │
+│  Auth: AWS Signature V4 (SigV4AuthMiddleware)   │
+│    → parse → credential lookup → sig verify     │
+│    → timestamp check → payload hash verify      │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -132,22 +110,22 @@ Port 9000 — S3-compatible API
 ObjeX/
 ├── src/
 │   ├── ObjeX.Api/              # ASP.NET Core host
-│   │   ├── Auth/               # HangfireAuthorizationFilter, NoOpEmailSender
-│   │   ├── Endpoints/          # BucketEndpoints, ObjectEndpoints, ApiKeyEndpoints, DownloadEndpoints
+│   │   ├── Auth/               # HangfireAuthorizationFilter
+│   │   ├── Endpoints/          # BucketEndpoints, ObjectEndpoints, DownloadEndpoints
 │   │   │   └── S3Endpoints/    # S3BucketEndpoints, S3ObjectEndpoints
-│   │   ├── Middleware/         # ApiKeyAuthenticationMiddleware
-│   │   ├── S3/                 # S3Xml (XML builders), S3Errors (error code constants)
+│   │   ├── Middleware/         # SigV4AuthMiddleware
+│   │   ├── S3/                 # SigV4Parser, SigV4Signer, S3Xml, S3Errors
 │   │   └── Program.cs          # DI, middleware pipeline, EF migrations, admin seed
 │   │
 │   ├── ObjeX.Web/              # Blazor Server UI
 │   │   └── Components/
 │   │       ├── Pages/          # Dashboard, Buckets, Objects, Settings, Profile, Login
-│   │       ├── Dialogs/        # Create/upload/API key/folder dialogs
+│   │       ├── Dialogs/        # Create/upload/S3 credential/folder dialogs
 │   │       └── Layout/         # MainLayout (auth gate), NavMenu, EmptyLayout
 │   │
 │   ├── ObjeX.Core/             # Domain — no framework dependencies
 │   │   ├── Interfaces/         # IMetadataService, IObjectStorageService, IHashService
-│   │   ├── Models/             # Bucket, BlobObject, ApiKey, User
+│   │   ├── Models/             # Bucket, BlobObject, S3Credential, User
 │   │   └── Validation/         # BucketNameValidator, ObjectKeyValidator
 │   │
 │   └── ObjeX.Infrastructure/   # Implementations
@@ -163,7 +141,7 @@ ObjeX/
 
 ## API Endpoints
 
-All endpoints except `/account/*` and `/health/*` require authentication (`X-API-Key` header or session cookie).
+All endpoints on port 9001 except `/account/*` and `/health/*` require a session cookie. Port 9000 (S3 API) requires AWS Signature V4.
 
 ### Buckets — `/api/buckets`
 
@@ -197,22 +175,9 @@ Upload response:
 { "key": "hello.txt", "etag": "a1b2c3...", "size": 13 }
 ```
 
-### API Keys — `/api/keys`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/keys` | Create a new API key |
-| `GET` | `/api/keys` | List your API keys (no key value) |
-| `DELETE` | `/api/keys/{id}` | Delete an API key |
-
-Create request: `{"name":"my-key","expiresInDays":365}` (omit for 10-year default)
-Create response: `{"key":"obx_...","name":"...","expiresAt":"..."}` — **key value shown once only**
-
-**Key storage:** API keys are hashed with SHA256 before storage — the database never contains the raw key. A DB leak does not expose usable keys. The first 12 characters (`KeyPrefix`, e.g. `obx_aBcDeFgH`) are stored for display in the UI.
-
 ### S3-Compatible API — port `9000`
 
-Exposed on a dedicated port for drop-in compatibility with S3 clients (`aws-cli`, `boto3`, `s3cmd`, etc.). Auth is currently `AllowAnonymous` — AWS Signature V4 is in progress.
+Exposed on a dedicated port for drop-in compatibility with S3 clients (`aws-cli`, `boto3`, `s3cmd`, AWS SDK, etc.). Auth is **AWS Signature Version 4** — create credentials in Settings → S3 Credentials.
 
 | Method | Path | Description |
 |--------|------|-------------|
@@ -237,7 +202,7 @@ Configure `S3:PublicUrl` in `appsettings.json` (default `http://localhost:9000`)
 | API | Minimal APIs |
 | UI | Blazor Server (Interactive SSR) + Radzen Blazor |
 | API Docs | Scalar + OpenAPI |
-| Auth | ASP.NET Core Identity (cookies) + custom API key middleware |
+| Auth | ASP.NET Core Identity (cookies) + AWS Signature V4 (S3 port) |
 | Database | SQLite via EF Core 10 (snake_case cols, auto-migrated) |
 | Blob store | Filesystem, content-addressable SHA256 paths |
 | Background jobs | Hangfire (SQLite-backed, dashboard at `/hangfire`) |
@@ -253,7 +218,7 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Setting | Default |
 |---------|---------|
 | UI / API port | `9001` |
-| S3 API port | `9000` (S3-compatible endpoints; Sig V4 auth in progress) |
+| S3 API port | `9000` (S3-compatible endpoints; AWS Signature V4 required) |
 | S3 public URL | `http://localhost:9000` — set `S3:PublicUrl` for production |
 | Database | `./data/db/objex.db` (relative to working directory) |
 | Blob storage | `./data/blobs` (relative to working directory) |
@@ -457,7 +422,7 @@ docker compose up -d
 | Power loss mid-upload | ✅ Handled | Atomic write: `.tmp` → `File.Move`; stale `.tmp` cleaned on startup |
 | Crash between blob write and metadata commit | ✅ Handled | Orphaned blob cleaned by weekly Hangfire GC |
 | Path traversal in object key (`../../../etc/passwd`) | ✅ Handled | `SanitizeKey` strips `..` and normalises `\` → `/`; hashed paths never touch filesystem raw |
-| Expired API key attempt | ✅ Handled | Middleware checks `ExpiresAt`, returns 401 |
+| Invalid/expired S3 credential | ✅ Handled | SigV4AuthMiddleware returns S3 XML error (403) |
 | Missing blob file with valid metadata | ✅ Handled | `RetrieveAsync` throws `FileNotFoundException` → 404 |
 | Disk full during upload | ⚠️ Partially handled | `.tmp` write fails and is cleaned up; API returns 500 — not tested under real disk pressure |
 | Two concurrent uploads to same key | ⚠️ Untested | `File.Move(overwrite: true)` is atomic on Linux; DB upsert behavior under race not validated |

@@ -16,6 +16,7 @@ using ObjeX.Web.Components;
 using ObjeX.Api.Auth;
 using ObjeX.Api.Endpoints;
 using ObjeX.Api.Endpoints.S3Endpoints;
+using ObjeX.Api.Middleware;
 using ObjeX.Core.Models;
 
 using Radzen;
@@ -247,6 +248,9 @@ app.Use(async (ctx, next) =>
     await next();
 });
 app.UseAuthentication();
+// SigV4 auth runs only on port 9000 (S3 API) — must be after UseAuthentication
+app.UseWhen(ctx => ctx.Connection.LocalPort == 9000, branch =>
+    branch.UseMiddleware<SigV4AuthMiddleware>());
 app.UseAuthorization();
 
 app.UseAntiforgery();
@@ -296,9 +300,8 @@ app.MapRazorComponents<App>()
 
 app.MapDownloadEndpoints().RequireAuthorization();
 
-// S3 Endpoints — single shared group, port 9000 only
-// TODO: replace AllowAnonymous with S3 Sig V4 auth when implemented
-var s3Group = app.MapGroup("/").RequireHost("*:9000").AllowAnonymous();
+// S3 Endpoints — port 9000 only, auth via SigV4AuthMiddleware above
+var s3Group = app.MapGroup("/").RequireHost("*:9000").RequireAuthorization();
 app.MapS3BucketEndpoints(s3Group);
 app.MapS3ObjectEndpoints(s3Group);
 

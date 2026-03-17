@@ -11,7 +11,7 @@ src/
 ├── ObjeX.Api/           # ASP.NET Core host — Program.cs, Endpoints/, Middleware/, Auth/
 ├── ObjeX.Core/          # Domain — zero framework dependencies
 │   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHashService, IHasTimestamps
-│   ├── Models/          # Bucket, BlobObject, ApiKey, User, ListObjectsResult
+│   ├── Models/          # Bucket, BlobObject, S3Credential, User, ListObjectsResult
 │   ├── Utilities/       # HashingStream (MD5 passthrough for ETag computation during upload)
 │   └── Validation/      # BucketNameValidator (GetValidationError)
 ├── ObjeX.Infrastructure/
@@ -24,7 +24,7 @@ src/
 └── ObjeX.Web/           # Blazor Server UI — components, pages, dialogs
     └── Components/
         ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound
-        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateApiKeyDialog, ShowApiKeyDialog, CreateFolderDialog
+        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateS3CredentialDialog, ShowS3CredentialDialog, CreateFolderDialog
         └── Layout/      # MainLayout, NavMenu, EmptyLayout
 ```
 
@@ -49,18 +49,19 @@ ObjeX uses **two authentication mechanisms** operating independently:
 | Mechanism | Scheme name | Used by |
 |---|---|---|
 | Cookie (ASP.NET Core Identity) | `Identity.Application` | Browser / Blazor UI |
-| API Key (`X-API-Key` header) | `"ApiKey"` (custom) | External API clients, curl, SDKs |
+| AWS Signature V4 | `"SigV4"` (custom middleware) | S3 clients on port 9000 |
 
-Both are supported simultaneously. The cookie is the default for the browser; API keys bypass the login flow entirely for external access.
+The cookie is the default for the browser. S3 clients on port 9000 authenticate via AWS Sig V4 — no cookie, no `X-API-Key`.
 
 ### Middleware Pipeline Order
 
 ```
 UseStaticFiles
 UseCors
+UseRateLimiter
 app.Use(...)               ← security headers (X-Content-Type-Options, X-Frame-Options, etc.)
 UseAuthentication          ← runs Identity cookie handler, sets context.User for cookie sessions
-UseMiddleware<ApiKeyAuthenticationMiddleware>  ← if not already authed, checks X-API-Key header
+UseWhen(port == 9000)      ← SigV4AuthMiddleware: validates Sig V4, sets context.User for S3 clients
 UseAuthorization           ← enforces policies on the already-resolved context.User
 ```
 
@@ -80,7 +81,7 @@ Set in a raw `app.Use` middleware in `Program.cs` (after `UseCors`, before auth)
 
 CSP is intentionally omitted — Blazor Server requires inline scripts and a SignalR WebSocket (`ws://`/`wss://`), making a safe policy non-trivial. Deferred.
 
-`ApiKeyAuthenticationMiddleware` (`ObjeX.Api/Middleware/`) short-circuits if `context.User.Identity.IsAuthenticated` is already true (cookie session takes precedence). Otherwise, it looks up the key in `db.ApiKeys`, validates expiry, updates `LastUsedAt`, and sets `context.User` to a `ClaimsIdentity` with scheme `"ApiKey"`.
+`SigV4AuthMiddleware` (`ObjeX.Api/Middleware/`) runs only on port 9000 via `app.UseWhen(ctx => ctx.Connection.LocalPort == 9000, ...)`. It: parses the `Authorization: AWS4-HMAC-SHA256 ...` header (or presigned query params), looks up the `AccessKeyId` in `db.S3Credentials`, validates the HMAC-SHA256 signature, checks timestamp freshness (±15 min, presigned URLs use `X-Amz-Expires`), verifies the payload hash against `x-amz-content-sha256`, then sets `context.User` to a `ClaimsIdentity` with scheme `"SigV4"`. Returns S3 XML error responses on failure.
 
 ### 401 vs 302 for API Paths
 
@@ -105,7 +106,7 @@ No `AddAuthenticationSchemes` on the policy — both auth mechanisms set `contex
 - `ObjeXDbContext` extends `IdentityDbContext<User>`
 - Roles: `Admin`, `User` — seeded on startup alongside default admin
 - Password requirements relaxed for MVP (min 4 chars, no complexity rules)
-- `IEmailSender<User>` is satisfied by `NoOpEmailSender` (`ObjeX.Api/Auth/`) — required by `MapIdentityApi<User>()`, email flows are no-ops
+- Email flows are no-ops — no `IEmailSender` registered, no email verification
 
 **Default admin** (seeded on first run if no `admin` user exists):
 ```
@@ -136,38 +137,27 @@ All pages using `MainLayout` are protected via `<AuthorizeView>` in `MainLayout.
 
 `AddCascadingAuthenticationState()` is registered in DI (`Program.cs`). Do not use the `<CascadingAuthenticationState>` wrapper component — it cannot cascade to interactive children from a static SSR parent.
 
-### ApiKey Model (`ObjeX.Core/Models/ApiKey.cs`)
+### S3Credential Model (`ObjeX.Core/Models/S3Credential.cs`)
 
 ```csharp
-public class ApiKey : IHasTimestamps {
+public class S3Credential : IHasTimestamps {
     public Guid Id { get; init; } = Guid.NewGuid();
-    public string Key { get; set; } = string.Empty;       // SHA256 hash of the raw key — never the raw key
-    public string KeyPrefix { get; set; } = string.Empty; // first 12 chars of raw key for UI display
     public required string Name { get; set; }
+    public required string AccessKeyId { get; set; }      // "OBX" + 17 random uppercase alphanumeric (20 chars total)
+    public required string SecretAccessKey { get; set; }  // 40 random bytes → base64url (~54 chars); stored plain — required for HMAC
     public required string UserId { get; set; }
     public User? User { get; set; }
-    public DateTime ExpiresAt { get; set; }
     public DateTime? LastUsedAt { get; set; }
     public DateTime CreatedAt { get; init; } = DateTime.UtcNow;
     public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
 }
 ```
 
-**Key generation:** use `ApiKey.Create(name, userId, expiresAt)` — returns `(ApiKey entity, string plainText)`. The plaintext key is returned to the caller once and never stored. `Key` stores `SHA256(plainText)`. `KeyPrefix` stores the first 12 chars for display.
+**Credential generation:** use `S3Credential.Create(name, userId)` — returns `(S3Credential entity, string secretAccessKey)`. The secret is returned to the caller once (shown in UI) and stored in the DB plain — **this is intentional**: HMAC-SHA256 signing requires the original secret; a hashed version cannot be used for verification.
 
-**Auth middleware:** hashes the incoming `X-API-Key` header value with `ApiKey.HashKey()` and looks up by hash. Raw keys never touch the DB.
+**Why plain storage:** AWS itself stores secret access keys in plain (or symmetrically encrypted) form. The security model is: protect the DB (encryption at rest, access control), not hash the secret. A hashed secret is incompatible with Sig V4.
 
-EF Core is told `.ValueGeneratedNever()` for `Id` and `Key`.
-
-### API Key Endpoints (`ObjeX.Api/Endpoints/ApiKeyEndpoints.cs`)
-
-```
-POST   /api/keys          → create key; returns { key, name, expiresAt } — key value shown ONCE
-GET    /api/keys          → list user's keys; never returns key value
-DELETE /api/keys/{id}     → delete key scoped to current user
-```
-
-All require `ApiPolicy` (authenticated user). Key listing exposes only metadata (id, name, expiry, lastUsed, created).
+EF Core `.ValueGeneratedNever()` on `Id`. Unique index on `AccessKeyId`.
 
 ### Hangfire Dashboard Auth
 
@@ -252,7 +242,7 @@ public interface IHashService
 ```csharp
 // Bucket: Id (Guid), Name, ObjectCount, TotalSize, Objects (nav), CreatedAt, UpdatedAt
 // BlobObject: Id (Guid), BucketName, Key, Size, ContentType, ETag, StoragePath, Bucket (nav), CreatedAt, UpdatedAt
-// ApiKey: Id (Guid), Key (auto-generated), Name, UserId, User (nav), ExpiresAt, LastUsedAt, CreatedAt, UpdatedAt
+// S3Credential: Id (Guid), Name, AccessKeyId, SecretAccessKey (plain), UserId, User (nav), LastUsedAt, CreatedAt, UpdatedAt
 // User: extends IdentityUser — adds StorageUsedBytes
 // All except User implement IHasTimestamps
 ```
@@ -333,13 +323,13 @@ External S3 clients → HTTP → ObjeX.Api endpoints → same services
 
 **Input reactivity:** Use native `<input @oninput="...">` with `class="rz-textbox"` instead of `<RadzenTextBox>` when you need per-keystroke updates. Radzen's `ValueChanged` fires on `onchange` (blur), not `oninput`.
 
-**EF Core + `init` properties:** Both `Bucket` and `BlobObject` use `Guid Id { get; init; } = Guid.NewGuid()`. EF Core 10 must be told not to generate its own value — both entities have `.ValueGeneratedNever()` configured in `ObjeXDbContext`. Do not remove this — removing it causes "Unexpected entry.EntityState: Detached" on insert. Same applies to `ApiKey.Id` and `ApiKey.Key`.
+**EF Core + `init` properties:** Both `Bucket` and `BlobObject` use `Guid Id { get; init; } = Guid.NewGuid()`. EF Core 10 must be told not to generate its own value — both entities have `.ValueGeneratedNever()` configured in `ObjeXDbContext`. Do not remove this — removing it causes "Unexpected entry.EntityState: Detached" on insert. Same applies to `S3Credential.Id`.
 
 **Dialogs:** Use `DialogService.OpenAsync<TComponent>("Title")` — returns the value passed to `DialogService.Close(value)`, or `null` if cancelled. Always null-check the return before acting on it. For complex return types, define a nested `public record` inside the dialog's `@code` block and reference it as `DialogComponent.RecordType` from the caller. Use `OpenAsync` (not `Alert`) when the dialog body needs rendered HTML — `Alert` renders plain text only.
 
-Keyboard handling: text-input dialogs (`CreateBucketDialog`, `CreateApiKeyDialog`) bind `@onkeydown` on the `<input>` — Enter submits (if valid), Escape cancels. `ShowApiKeyDialog` binds `@onkeydown` on the container `<RadzenStack tabindex="-1">`. `CreateFolderDialog` follows the same pattern. Do NOT rely on Radzen's built-in Enter-to-submit — it doesn't exist.
+Keyboard handling: text-input dialogs (`CreateBucketDialog`, `CreateS3CredentialDialog`) bind `@onkeydown` on the `<input>` — Enter submits (if valid), Escape cancels. `ShowS3CredentialDialog` binds `@onkeydown` on the container `<RadzenStack tabindex="-1">`. `CreateFolderDialog` follows the same pattern. Do NOT rely on Radzen's built-in Enter-to-submit — it doesn't exist.
 
-`ShowApiKeyDialog` has a copy-to-clipboard button (Material `content_copy` icon) overlaid on the key code block. On click it calls `navigator.clipboard.writeText` via JS interop, then switches to a `check` icon for 2 seconds. The dialog has `CloseDialogOnOverlayClick = false, ShowClose = false` — user must click Done.
+`ShowS3CredentialDialog` displays both `AccessKeyId` and `SecretAccessKey` with copy-to-clipboard buttons. Shows a warning alert: "Save your secret access key now — it won't be shown again." The dialog has `CloseDialogOnOverlayClick = false, ShowClose = false` — user must click Done.
 
 **File downloads are the exception to "no API calls from Blazor":** Blazor Server runs on the server and cannot push file bytes to the browser's download manager through SignalR. Download buttons use a plain `<a href="/api/objects/..." download>` pointing at the API endpoint. This is not an architecture violation — it's a browser constraint.
 
@@ -373,11 +363,6 @@ DELETE /api/objects/{bucket}/{*key}          → delete object
 GET    /api/objects/{bucket}/                → list objects; accepts ?prefix=&delimiter= query params; returns { objects, commonPrefixes }
 GET    /api/objects/{bucket}/download        → ZIP download; accepts ?prefix= to scope to a virtual folder
 
-# API Keys (require ApiPolicy) — port 9001
-POST   /api/keys          → create key; response includes key value (shown once)
-GET    /api/keys          → list user's keys (no key value exposed)
-DELETE /api/keys/{id}     → delete key
-
 # Auth (no auth required)
 POST   /account/login     → form login (sets cookie), redirects to returnUrl
 GET    /account/logout    → clears cookie, redirects to /login
@@ -386,10 +371,11 @@ GET    /account/logout    → clears cookie, redirects to /login
 GET    /health            → liveness (200 if process is up, no checks); also at /health/live
 GET    /health/ready      → readiness (checks DB connectivity + blob storage writability)
 GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
-GET    /scalar/v1         → interactive API docs (require auth)
+GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
 
-# S3-Compatible API — port 9000 (AllowAnonymous — Sig V4 auth in progress)
-# Single shared RouteGroupBuilder: app.MapGroup("/").RequireHost("*:9000").WithTags("S3").AllowAnonymous()
+# S3-Compatible API — port 9000 (AWS Signature V4 required)
+# Single shared RouteGroupBuilder: app.MapGroup("/").RequireHost("*:9000").RequireAuthorization()
+# Auth: SigV4AuthMiddleware runs before UseAuthorization, sets context.User on valid signature
 GET    /                        → list all buckets (S3 ListAllMyBuckets XML)
 HEAD   /{bucket}                → bucket exists check (200/404)
 PUT    /{bucket}                → create bucket (S3 XML response)
@@ -400,6 +386,9 @@ HEAD   /{bucket}/{*key}         → object metadata (ETag, Content-Length, Conte
 DELETE /{bucket}/{*key}         → delete object (204)
 
 # S3 implementation details:
+# - SigV4Parser (ObjeX.Api/S3/SigV4Parser.cs) — parses Authorization header + presigned query params
+# - SigV4Signer (ObjeX.Api/S3/SigV4Signer.cs) — canonical request, string-to-sign, HMAC key derivation
+# - SigV4AuthMiddleware (ObjeX.Api/Middleware/) — orchestrates auth: lookup → timestamp → sig → payload hash
 # - S3Xml helper (ObjeX.Api/S3/S3Xml.cs) — XML response builders, SecurityElement.Escape() for injection prevention
 # - S3Errors constants (ObjeX.Api/S3/S3Errors.cs) — S3 error code strings
 # - Config: S3:PublicUrl = "http://localhost:9000" — used by Blazor UI to build download links
@@ -416,9 +405,7 @@ DELETE /{bucket}/{*key}         → delete object (204)
 | `Microsoft.EntityFrameworkCore.Sqlite` | SQLite persistence |
 | `EFCore.NamingConventions` | snake_case DB columns |
 | `Microsoft.AspNetCore.Identity.EntityFrameworkCore` | User auth, password hashing, roles |
-| `Scalar.AspNetCore` | Interactive API docs at `/scalar/v1` |
 | `Serilog.AspNetCore` | Structured request logging |
-| `Microsoft.AspNetCore.OpenApi` | OpenAPI spec generation |
 | `Hangfire.Core` | Background job scheduling |
 | `Hangfire.AspNetCore` | Hangfire DI + ASP.NET Core host integration |
 | `Hangfire.Storage.SQLite` | Hangfire job store (reuses `objex.db`) |
@@ -444,7 +431,6 @@ DELETE /{bucket}/{*key}         → delete object (204)
 cd src/ObjeX.Api
 dotnet run
 # → http://localhost:9001  (login: admin / admin)
-# → http://localhost:9001/scalar/v1  (API docs)
 # → http://localhost:9001/hangfire   (job dashboard)
 # → http://localhost:9001/health
 ```

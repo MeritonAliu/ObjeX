@@ -1,6 +1,14 @@
 @page "/settings"
+@using Microsoft.EntityFrameworkCore
+@using ObjeX.Core.Models
+@using ObjeX.Infrastructure.Data
+@using ObjeX.Web.Components.Dialogs
 @inject ThemeService ThemeService
 @inject IJSRuntime JS
+@inject ObjeXDbContext Db
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Settings — ObjeX</PageTitle>
 
@@ -17,10 +25,65 @@
             </RadzenStack>
         </RadzenStack>
     </RadzenCard>
+
+    <RadzenCard>
+        <RadzenStack Gap="1rem">
+            <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center"
+                         JustifyContent="JustifyContent.SpaceBetween">
+                <RadzenText TextStyle="TextStyle.H6">S3 Credentials</RadzenText>
+                <RadzenButton Text="New Credential" Icon="add" ButtonStyle="ButtonStyle.Primary"
+                              Size="ButtonSize.Small" Click="CreateCredential" />
+            </RadzenStack>
+
+            @if (_credentials.Count == 0)
+            {
+                <RadzenText Style="color:var(--rz-text-secondary-color)">No S3 credentials yet. Create one to access your buckets via the S3 API.</RadzenText>
+            }
+            else
+            {
+                <RadzenDataGrid Data="_credentials" TItem="S3Credential" AllowSorting="false"
+                                Style="border:none">
+                    <Columns>
+                        <RadzenDataGridColumn TItem="S3Credential" Property="Name" Title="Name" />
+                        <RadzenDataGridColumn TItem="S3Credential" Property="AccessKeyId" Title="Access Key ID">
+                            <Template Context="cred">
+                                <code style="font-size:0.85rem">@cred.AccessKeyId</code>
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="S3Credential" Property="CreatedAt" Title="Created" Width="160px">
+                            <Template Context="cred">
+                                @cred.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="S3Credential" Property="LastUsedAt" Title="Last Used" Width="160px">
+                            <Template Context="cred">
+                                @(cred.LastUsedAt.HasValue ? cred.LastUsedAt.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "Never")
+                            </Template>
+                        </RadzenDataGridColumn>
+                        <RadzenDataGridColumn TItem="S3Credential" Title="" Width="60px" TextAlign="TextAlign.Right">
+                            <Template Context="cred">
+                                <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger"
+                                              Size="ButtonSize.Small" Click="@(() => DeleteCredential(cred))" />
+                            </Template>
+                        </RadzenDataGridColumn>
+                    </Columns>
+                </RadzenDataGrid>
+            }
+        </RadzenStack>
+    </RadzenCard>
 </RadzenStack>
 
 @code {
     bool _isDark;
+    string _userId = string.Empty;
+    List<S3Credential> _credentials = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        await LoadCredentials();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -28,6 +91,51 @@
         var cookie = await JS.InvokeAsync<string>("eval", "document.cookie.split('; ').find(r=>r.startsWith('objex-theme='))?.split('=')[1]??''");
         _isDark = cookie.Contains("dark");
         StateHasChanged();
+    }
+
+    async Task LoadCredentials()
+    {
+        _credentials = await Db.S3Credentials
+            .Where(c => c.UserId == _userId)
+            .OrderByDescending(c => c.CreatedAt)
+            .ToListAsync();
+    }
+
+    async Task CreateCredential()
+    {
+        var result = await DialogService.OpenAsync<CreateS3CredentialDialog>("New S3 Credential",
+            options: new DialogOptions { CloseDialogOnOverlayClick = true, ShowClose = true });
+
+        if (result is not CreateS3CredentialDialog.Result r) return;
+
+        var (credential, secret) = S3Credential.Create(r.Name, _userId);
+        Db.S3Credentials.Add(credential);
+        await Db.SaveChangesAsync();
+        await LoadCredentials();
+
+        await DialogService.OpenAsync<ShowS3CredentialDialog>("Your New S3 Credential",
+            new Dictionary<string, object?>
+            {
+                { "AccessKeyId", credential.AccessKeyId },
+                { "SecretAccessKey", secret }
+            },
+            options: new DialogOptions { CloseDialogOnOverlayClick = false, ShowClose = false });
+    }
+
+    async Task DeleteCredential(S3Credential cred)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Delete credential \"{cred.Name}\"? This cannot be undone.",
+            "Delete Credential",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        Db.S3Credentials.Remove(cred);
+        await Db.SaveChangesAsync();
+        await LoadCredentials();
+
+        NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"Credential \"{cred.Name}\" deleted.");
     }
 
     async Task OnThemeChanged(bool value)

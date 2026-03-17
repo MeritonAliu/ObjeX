@@ -26,7 +26,7 @@
 - **Buckets page** (`/buckets`) — list all buckets, create (with inline name validation), delete with confirmation
 - **Bucket detail / file browser** (`/buckets/{name}`) — virtual folder nav, breadcrumb, upload into current folder, per-object download (via S3 port 9000), delete, ZIP download
 - **Drag-and-drop upload dialog** — multi-file picker, streams files to `IObjectStorageService` directly from Blazor (no API round-trip)
-- **Settings page** (`/settings`) — API key management (create with one-time key display, list, delete) + dark/light mode toggle
+- **Settings page** (`/settings`) — S3 credential management (create with one-time secret display, list, delete) + dark/light mode toggle
 - **Profile page** (`/profile`) — username, email, password management with inline validation
 - Toast notifications bottom-right via Radzen `NotificationService`
 
@@ -69,10 +69,10 @@
 - **Logout** — `GET /account/logout` clears cookie, redirects to `/login`
 - **Global Blazor protection** — `AuthorizeView` in `MainLayout.razor` wraps all pages; `Login.razor` uses `EmptyLayout` to opt out
 - **Cookie auth for browser** — default scheme is `Identity.Application`; challenges redirect to `/login`
-- **API key auth for external clients** — `X-API-Key` header; `ApiKeyAuthenticationMiddleware` validates key, updates `LastUsedAt`, sets `context.User`
-- **API keys UI** — Settings page at `/settings` lists keys, creates new (with one-time display of key value), deletes
-- **API key endpoints** — `POST/GET/DELETE /api/keys`; key value shown only on creation
-- **Proper 401 for API paths** — `ConfigureApplicationCookie` suppresses redirect for `/api/*`; `UseStatusCodePagesWithReExecute` skipped for `/api/*` to prevent cascade to login page
+- **AWS Signature V4 for S3 clients** — `SigV4AuthMiddleware` on port 9000; validates HMAC-SHA256 canonical request, timestamp freshness (±15 min), payload hash; presigned URL expiry enforced via `X-Amz-Expires`
+- **S3 credentials model** — `S3Credential` in `ObjeX.Core/Models/`; `AccessKeyId` ("OBX" + 17 random chars) + `SecretAccessKey` (40-byte base64url, stored plain for HMAC); `Create()` factory returns secret once
+- **S3 credentials UI** — Settings page lists credentials, create (one-time secret display with copy button), delete
+- **Proper 401 for API paths** — `ConfigureApplicationCookie` suppresses redirect for `/api/*`; `UseStatusCodePagesWithRedirects` skipped for `/api/*`
 - **Hangfire dashboard** — `HangfireAuthorizationFilter` allows localhost unconditionally; requires `Admin` role otherwise
 
 ---
@@ -88,7 +88,8 @@
 - [x] XML response formatting via `S3Xml` helper (`SecurityElement.Escape()` for injection prevention)
 - [x] S3 error code constants (`S3Errors` class)
 - [x] `?download=true` query param forces `application/octet-stream` attachment (cross-origin download fix)
-- [ ] AWS Signature V4 authentication (HMAC-SHA256 canonical request) — currently `AllowAnonymous`
+- [x] AWS Signature V4 authentication — `SigV4Parser`, `SigV4Signer`, `SigV4AuthMiddleware`; canonical request, timestamp replay protection, presigned URL expiry, payload hash verification
+- [ ] `aws-chunked` streaming — per-chunk signature verification for uploads >8MB
 - [ ] `ListObjects` / `ListObjectsV2` with prefix + delimiter support
 - [ ] S3 error response XML format for all error cases
 - [ ] Compatibility testing with `aws-cli`, `boto3`, `s3cmd`
@@ -150,7 +151,7 @@
 - Identity backend already implemented (User model, roles, password hashing)
 - Registration page
 - Admin user list (view, deactivate, role assignment)
-- Password reset flow (requires real email sender — currently `NoOpEmailSender`)
+- Password reset flow (requires real email sender — currently no-op)
 - Email verification
 
 ### 11. Bucket Permissions

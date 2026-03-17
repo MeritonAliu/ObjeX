@@ -11,6 +11,7 @@ public static class S3Errors
     public const string AccessDenied = "AccessDenied";
     public const string InvalidAccessKeyId = "InvalidAccessKeyId";
     public const string SignatureDoesNotMatch = "SignatureDoesNotMatch";
+    public const string RequestExpired = "RequestExpired";
     public const string EntityTooLarge = "EntityTooLarge";
     public const string InternalError = "InternalError";
 }

@@ -9,6 +9,7 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
 {
     public DbSet<Bucket> Buckets { get; set; } = null!;
     public DbSet<BlobObject> BlobObjects { get; set; } = null!;
+    public DbSet<S3Credential> S3Credentials { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -20,6 +21,17 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.HasIndex(e => e.Name).IsUnique();
             entity.Property(e => e.Name).IsRequired();
+        });
+
+        modelBuilder.Entity<S3Credential>(entity =>
+        {
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.HasIndex(e => e.AccessKeyId).IsUnique();
+            entity.HasOne(e => e.User)
+                .WithMany()
+                .HasForeignKey(e => e.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<BlobObject>(entity =>
