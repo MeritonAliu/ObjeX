@@ -71,6 +71,7 @@
                         <a href="/api/objects/@BucketName/download?prefix=@row.FolderPath" download="@(row.Name[..^1]).zip" target="_blank">
                             <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Text" />
                         </a>
+                        <RadzenButton Disabled="true" Icon="link" Variant="Variant.Text" style="visibility:hidden" />
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
                                       Click="@(() => OnDeleteFolder(row.FolderPath!))" />
                     }
