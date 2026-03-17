@@ -12,6 +12,8 @@
 
 ## Quick Start
 
+Docker image: [`meritonaliu/objex`](https://hub.docker.com/r/meritonaliu/objex)
+
 ```bash
 git clone https://github.com/youruser/ObjeX.git
 cd ObjeX/src/ObjeX.Api
@@ -42,100 +44,7 @@ ObjeX uses two auth mechanisms on separate ports:
 
 Create credentials in **Settings → S3 Credentials**. The secret access key is shown once on creation — save it.
 
-```python
-# boto3
-import boto3
-s3 = boto3.client(
-    "s3",
-    endpoint_url="http://localhost:9000",
-    aws_access_key_id="OBXXXX...",
-    aws_secret_access_key="your-secret",
-)
-s3.put_object(Bucket="my-bucket", Key="hello.txt", Body=b"Hello, ObjeX!")
-```
-
-```csharp
-// AWS SDK for .NET
-var client = new AmazonS3Client(
-    "OBXXXX...", "your-secret",
-    new AmazonS3Config { ServiceURL = "http://localhost:9000", ForcePathStyle = true });
-await client.PutObjectAsync(new PutObjectRequest {
-    BucketName = "my-bucket", Key = "hello.txt", ContentBody = "Hello, ObjeX!" });
-```
-
-```bash
-# aws-cli
-aws s3 --endpoint-url http://localhost:9000 \
-  --aws-access-key-id OBXXXX... --aws-secret-access-key your-secret \
-  cp hello.txt s3://my-bucket/hello.txt
-```
-
----
-
-## Architecture
-
-```
-Port 9001 — UI + native API
-┌─────────────────────────────────────────────────┐
-│              ASP.NET Core 10 App                │
-│                                                 │
-│  ├─ Blazor Server UI (/)                        │
-│  ├─ REST API (/api/*)                           │
-│  ├─ Auth endpoints (/account/login, /logout)    │
-│  └─ Scalar API Docs (/scalar/v1)               │
-│                                                 │
-│  Auth: Cookie ──→ UseAuthorization              │
-│                                                 │
-│  ┌─────────────────────────────────────────┐    │
-│  │  ./data/blobs/  (content-addressed FS)  │    │
-│  │  ./data/db/objex.db  (SQLite)           │    │
-│  └─────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────┘
-
-Port 9000 — S3-compatible API
-┌─────────────────────────────────────────────────┐
-│  ├─ GET  /                  (list buckets)      │
-│  ├─ HEAD/PUT/DELETE /{bucket}                   │
-│  └─ PUT/GET/HEAD/DELETE /{bucket}/{*key}        │
-│                                                 │
-│  Auth: AWS Signature V4 (SigV4AuthMiddleware)   │
-│    → parse → credential lookup → sig verify     │
-│    → timestamp check → payload hash verify      │
-└─────────────────────────────────────────────────┘
-```
-
-### Project Structure
-
-```
-ObjeX/
-├── src/
-│   ├── ObjeX.Api/              # ASP.NET Core host
-│   │   ├── Auth/               # HangfireAuthorizationFilter
-│   │   ├── Endpoints/          # BucketEndpoints, ObjectEndpoints, DownloadEndpoints
-│   │   │   └── S3Endpoints/    # S3BucketEndpoints, S3ObjectEndpoints
-│   │   ├── Middleware/         # SigV4AuthMiddleware
-│   │   ├── S3/                 # SigV4Parser, SigV4Signer, S3Xml, S3Errors
-│   │   └── Program.cs          # DI, middleware pipeline, EF migrations, admin seed
-│   │
-│   ├── ObjeX.Web/              # Blazor Server UI
-│   │   └── Components/
-│   │       ├── Pages/          # Dashboard, Buckets, Objects, Settings, Profile, Login
-│   │       ├── Dialogs/        # Create/upload/S3 credential/folder dialogs
-│   │       └── Layout/         # MainLayout (auth gate), NavMenu, EmptyLayout
-│   │
-│   ├── ObjeX.Core/             # Domain — no framework dependencies
-│   │   ├── Interfaces/         # IMetadataService, IObjectStorageService, IHashService
-│   │   ├── Models/             # Bucket, BlobObject, S3Credential, User
-│   │   └── Validation/         # BucketNameValidator, ObjectKeyValidator
-│   │
-│   └── ObjeX.Infrastructure/   # Implementations
-│       ├── Data/               # ObjeXDbContext (IdentityDbContext<User>)
-│       ├── Hashing/            # Sha256HashService
-│       ├── Jobs/               # CleanupOrphanedBlobsJob, VerifyBlobIntegrityJob (Hangfire)
-│       ├── Metadata/           # SqliteMetadataService
-│       ├── Migrations/         # EF Core migrations
-│       └── Storage/            # FileSystemStorageService
-```
+Point any S3-compatible client (AWS CLI, AWS SDKs, rclone, s3cmd, etc.) at `http://localhost:9000` with your access key and secret.
 
 ---
 
@@ -194,23 +103,6 @@ Configure `S3:PublicUrl` in `appsettings.json` (default `http://localhost:9000`)
 
 ---
 
-## Technology Stack
-
-| Layer | Technology |
-|-------|------------|
-| Runtime | .NET 10, ASP.NET Core 10 |
-| API | Minimal APIs |
-| UI | Blazor Server (Interactive SSR) + Radzen Blazor |
-| API Docs | Scalar + OpenAPI |
-| Auth | ASP.NET Core Identity (cookies) + AWS Signature V4 (S3 port) |
-| Database | SQLite via EF Core 10 (snake_case cols, auto-migrated) |
-| Blob store | Filesystem, content-addressable SHA256 paths |
-| Background jobs | Hangfire (SQLite-backed, dashboard at `/hangfire`) |
-| Logging | Serilog (console + request logging) |
-| Compression | Response compression (HTTPS-enabled) |
-
----
-
 ## Configuration
 
 No config required for local dev. Defaults (from `appsettings.json`):
@@ -250,97 +142,11 @@ Override via `appsettings.json` or environment variables:
 
 > ⚠️ Change default admin credentials before exposing the instance publicly.
 
-### SQLite Limitations
+### Database
 
-SQLite is the right choice for single-node homelab use — zero config, no separate process, trivially backed up with `cp`. It becomes a bottleneck in specific scenarios:
+SQLite by default — zero config, no separate process. Future versions will support plugging in your own database (PostgreSQL, etc.) via the compose file.
 
-**What works fine:**
-- Personal or small-team use (handful of concurrent users)
-- Bursty uploads — SQLite handles short write spikes well in WAL mode
-- Read-heavy workloads — WAL mode allows concurrent readers with no lock contention
-
-**What to watch out for:**
-- **Sustained concurrent writes** — Hangfire polls every few seconds while EF Core writes on every upload/delete/key rotation. Under heavy parallel upload bursts this can produce `SQLITE_BUSY` retries and degraded throughput
-- **Network filesystems** — do not host `objex.db` on NFS, SMB, or any network-mounted path. SQLite uses POSIX advisory locks which are unreliable over NFS and can cause silent database corruption
-- **Not benchmarked** — no formal throughput testing has been done. If you need numbers, run your own load test against your hardware
-
-**Auto-migration:** enabled by default (`Database:AutoMigrate=true`). A warning is logged before migrations run. For production, consider setting `Database:AutoMigrate=false` and running `dotnet ef database update` as a pre-deploy step — this gives you control over when schema changes apply and lets you take a backup first (see [Backup & Restore](#backup--restore)). EF Core migrations are idempotent so a restart loop won't compound damage, but a failed migration mid-deploy will block startup until fixed.
-
-**Multi-instance:** startup migration (`db.Database.Migrate()`) is not safe for concurrent multi-instance deployments — if two processes start simultaneously, both race on schema migration. SQLite's file lock serializes this in practice but it's not a guarantee. ObjeX is single-node by design; if you ever run multiple instances, extract migrations into a dedicated pre-start step.
-
-**SQLite configuration:** WAL mode (`journal_mode=WAL`), `synchronous=NORMAL`, and `busy_timeout=5000` are applied via PRAGMA on every startup and persist to the DB file. WAL enables concurrent reads during writes. `busy_timeout` makes SQLite retry internally for up to 5 seconds on lock contention before throwing `SQLITE_BUSY`. EF Core `CommandTimeout` is set to 30 seconds.
-
-**Architecture note:** Hangfire, EF Core (metadata + Identity), and the app all share one `objex.db` file. Separating Hangfire onto its own SQLite file or an in-memory store is a future improvement. For now, the weekly cleanup job is the only significant Hangfire write activity.
-
-**Upgrade path:** The `IMetadataService` interface is the only thing that needs a new implementation to swap SQLite for PostgreSQL. See roadmap.
-
-### Backup & Restore
-
-> **Current state:** no built-in backup tooling. Manual procedure only.
-
-#### What needs to be backed up
-
-ObjeX data lives in two places that must be backed up **together and consistently**:
-
-```
-data/
-├── db/objex.db     # SQLite — all metadata, user accounts, API keys, bucket definitions
-└── blobs/          # content-addressed blob files (SHA256-named .blob files)
-```
-
-The logical key → physical blob mapping exists **only in the database**. If you lose `objex.db` but keep the blobs, you have a directory of `a3f7c2....blob` files with no way to know which object each one represents. There is currently no tool to rebuild the index from disk.
-
-#### Docker (recommended setup)
-
-Data lives in a named Docker volume. To back it up:
-
-```bash
-# Stop the container first (ensures DB is not mid-write)
-docker compose stop objex
-
-# Copy the volume to a backup location
-docker run --rm \
-  -v objex_data:/data \
-  -v /your/backup/path:/backup \
-  alpine cp -a /data /backup/objex-$(date +%Y%m%d)
-
-# Restart
-docker compose start objex
-```
-
-Hot backup (without stopping) is possible using SQLite's online backup:
-```bash
-docker exec objex sqlite3 /data/db/objex.db ".backup /data/db/objex.db.bak"
-```
-Then copy the `.bak` file and the blobs. There is a small race window between the DB backup and the blob copy — any blobs written in that window will be orphaned and cleaned up by the weekly Hangfire GC job. No data loss, but a slightly inconsistent snapshot is possible.
-
-#### Bare metal / direct deploy
-
-```bash
-# Stop the app first
-pkill -f ObjeX.Api.dll
-
-cp -a ~/objex/data/ ~/backups/objex-$(date +%Y%m%d)/
-
-# Restart
-dotnet ~/objex/ObjeX.Api.dll --urls "http://0.0.0.0:9001"
-```
-
-#### Restore
-
-1. Stop the running instance
-2. Replace `data/` with the backup copy
-3. Start the instance — EF Core will validate the schema on startup
-4. Hit `/health/ready` to confirm DB connectivity and blob storage are both healthy
-5. Spot-check a few object downloads to verify blob integrity
-
-#### Consistency guarantees
-
-| Scenario | Outcome |
-|----------|---------|
-| DB newer than blobs | Object records exist with no backing blob → download returns 404 |
-| Blobs newer than DB | Orphaned blobs → cleaned up automatically by weekly Hangfire GC |
-| Both from same stopped snapshot | Fully consistent |
+If you're hitting SQLite limits: [sqlite.org/limits.html](https://sqlite.org/limits.html) · [WAL mode](https://sqlite.org/wal.html) · [when to use SQLite](https://sqlite.org/whentouse.html)
 
 ### Encryption
 
