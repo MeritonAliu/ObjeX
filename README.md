@@ -392,24 +392,26 @@ See [ROADMAP.md](./ROADMAP.md).
 
 ---
 
-## CI
+## CI/CD
 
-### GitHub Actions (`.github/workflows/ci.yml`)
+### CI — `.github/workflows/ci.yml`
 
-Build-only gate on push to `main` and all PRs — restore → build Release → fail fast on compile errors. No tests yet.
+Build gate on push to `main` and all PRs — restore → build Release → fail fast on compile errors. No tests yet.
 
-### Dependabot (`.github/dependabot.yml`)
+### CD — `.github/workflows/cd.yml`
 
-Weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`) and GitHub Actions versions.
+On push to `main`: builds multi-arch image (amd64/arm64) and pushes to Docker Hub automatically.
 
-### Docker Hub
-
-Published at [`meritonaliu/objex`](https://hub.docker.com/r/meritonaliu/objex) — multi-arch (amd64/arm64):
+Published at [`meritonaliu/objex`](https://hub.docker.com/r/meritonaliu/objex):
 
 ```bash
 docker pull meritonaliu/objex:latest
 docker compose up -d
 ```
+
+### Dependabot — `.github/dependabot.yml`
+
+Weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`) and GitHub Actions versions.
 
 ## Testing
 

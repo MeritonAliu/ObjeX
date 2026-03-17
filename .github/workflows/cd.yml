@@ -6,18 +6,32 @@ on:
   workflow_dispatch:
 
 jobs:
-  deploy:
-    name: Deploy
-    runs-on: [self-hosted, objex, cd, dev]
+  publish:
+    name: Publish to Docker Hub
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
-      - name: Deploy
-        run: docker compose up -d --build --remove-orphans
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
-      - name: Health check
-        run: |
-          sleep 5
-          curl -f http://localhost:8080/health/ready || (docker compose logs --tail=50 && exit 1)
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            meritonaliu/objex:latest
+            meritonaliu/objex:${{ github.sha }}

@@ -30,9 +30,9 @@
 - **Profile page** (`/profile`) — username, email, password management with inline validation
 - Toast notifications bottom-right via Radzen `NotificationService`
 
-### CI ✅
+### CI/CD ✅
 - **CI** (`ci.yml`) — triggers on push to `main` and all PRs; runs on `ubuntu-latest`; restore → build Release; fails fast on compile errors; no tests yet
-- **No CD** — deployments are manual via Docker Hub (`meritonaliu/objex:latest`)
+- **CD** (`cd.yml`) — triggers on push to `main`; builds multi-arch image (amd64/arm64) and pushes to Docker Hub (`meritonaliu/objex:latest` + `meritonaliu/objex:<sha>`)
 
 ### Dockerize ✅
 - Multi-stage Dockerfile (SDK build → ASP.NET runtime)
