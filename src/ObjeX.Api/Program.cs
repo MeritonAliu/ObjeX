@@ -224,8 +224,8 @@ using (var scope = app.Services.CreateScope())
             await userManager.AddToRoleAsync(adminUser, "Admin");
 
             app.Logger.LogWarning(
-                "⚠️  Default admin user created: {Username} {Email} / {Password} - CHANGE THIS IN PRODUCTION!",
-                defaultUsername, defaultEmail, defaultPassword);
+                "⚠️  Default admin user created. Change the credentials before exposing this instance publicly " +
+                "(appsettings.json: DefaultAdmin:Password — Docker: DefaultAdmin__Password).");
         }
     }
 }
