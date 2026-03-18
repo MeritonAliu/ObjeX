@@ -64,14 +64,15 @@
             <RadzenDataGridColumn TItem="ListRow" Title="Uploaded">
                 <Template Context="row">@(row.IsFolder ? "" : row.Object!.CreatedAt.ToString("yyyy-MM-dd HH:mm"))</Template>
             </RadzenDataGridColumn>
-            <RadzenDataGridColumn TItem="ListRow" Title="" Width="160px" Sortable="false">
+            <RadzenDataGridColumn TItem="ListRow" Title="" Width="200px" Sortable="false">
                 <Template Context="row">
                     @if (row.IsFolder)
                     {
                         <a href="/api/objects/@BucketName/download?prefix=@row.FolderPath" download="@(row.Name[..^1]).zip" target="_blank">
                             <RadzenButton Icon="download" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Text" />
                         </a>
-                        <RadzenButton Disabled="true" Icon="link" Variant="Variant.Text" style="visibility:hidden" />
+                        <RadzenButton Icon="link"       Variant="Variant.Text" style="visibility:hidden" />
+                        <RadzenButton Icon="visibility" Variant="Variant.Text" style="visibility:hidden" />
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
                                       Click="@(() => OnDeleteFolder(row.FolderPath!))" />
                     }
@@ -82,7 +83,17 @@
                         </a>
                         <RadzenButton Icon="link" ButtonStyle="ButtonStyle.Secondary" Variant="Variant.Text"
                                       Click="@(() => CopyPresignedLink(row.Object!))"
-                                      title="Copy presigned link (valid 1 hour)" />
+                                      title="Copy presigned link" />
+                        @if (IsPreviewable(row.Object!.ContentType))
+                        {
+                            <RadzenButton Icon="visibility" ButtonStyle="ButtonStyle.Light" Variant="Variant.Text"
+                                          Click="@(() => PreviewObject(row.Object!))"
+                                          title="Preview" />
+                        }
+                        else
+                        {
+                            <RadzenButton Icon="visibility" Variant="Variant.Text" style="visibility:hidden" />
+                        }
                         <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
                                       Click="@(() => OnDeleteObject(row.Object!))" />
                     }
@@ -283,6 +294,27 @@
         {
             NotificationService.Notify(NotificationSeverity.Error, "Failed to delete object", ex.Message);
         }
+    }
+
+    static bool IsPreviewable(string contentType) =>
+        contentType.StartsWith("image/") ||
+        contentType.StartsWith("video/") ||
+        contentType.StartsWith("audio/") ||
+        contentType.StartsWith("text/")  ||
+        contentType == "application/pdf";
+
+    async Task PreviewObject(BlobObject obj)
+    {
+        var url = $"/api/objects/{BucketName}/{obj.Key}";
+        await DialogService.OpenAsync<Dialogs.FilePreviewDialog>(
+            Path.GetFileName(obj.Key),
+            new Dictionary<string, object?>
+            {
+                { "FileName",    Path.GetFileName(obj.Key) },
+                { "ContentType", obj.ContentType },
+                { "Url",         url },
+            },
+            new DialogOptions { Width = "860px", CloseDialogOnOverlayClick = true, ShowClose = true });
     }
 
     async Task CopyPresignedLink(BlobObject obj)

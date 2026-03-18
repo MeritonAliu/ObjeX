@@ -241,7 +241,7 @@ app.Use(async (ctx, next) =>
 {
     ctx.Response.Headers.Remove("X-Powered-By");
     ctx.Response.Headers["X-Content-Type-Options"] = "nosniff";
-    ctx.Response.Headers["X-Frame-Options"] = "DENY";
+    ctx.Response.Headers["X-Frame-Options"] = "SAMEORIGIN";
     ctx.Response.Headers["X-Permitted-Cross-Domain-Policies"] = "none";
     ctx.Response.Headers["Referrer-Policy"] = "strict-origin-when-cross-origin";
     if (!app.Environment.IsDevelopment())

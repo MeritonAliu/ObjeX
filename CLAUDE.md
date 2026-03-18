@@ -74,7 +74,7 @@ Set in a raw `app.Use` middleware in `Program.cs` (after `UseCors`, before auth)
 | `Server` | removed | `AddServerHeader = false` on Kestrel |
 | `X-Powered-By` | removed | `ctx.Response.Headers.Remove(...)` |
 | `X-Content-Type-Options` | `nosniff` | always |
-| `X-Frame-Options` | `DENY` | always |
+| `X-Frame-Options` | `SAMEORIGIN` | always |
 | `X-Permitted-Cross-Domain-Policies` | `none` | always |
 | `Referrer-Policy` | `strict-origin-when-cross-origin` | always |
 | `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` | non-dev only |
