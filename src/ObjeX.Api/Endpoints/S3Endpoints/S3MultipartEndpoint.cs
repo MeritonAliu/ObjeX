@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Xml.Linq;
 
@@ -16,6 +17,12 @@ public static class S3MultipartEndpoint
 {
     private const long MinPartSize = 5 * 1024 * 1024; // 5 MB
 
+    static string GetCallerId(HttpContext ctx) =>
+        ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    static bool IsPrivileged(HttpContext ctx) =>
+        ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Manager");
+
     public static void MapS3MultipartEndpoints(this WebApplication app, RouteGroupBuilder s3)
     {
         // Initiate (POST ?uploads) and Complete (POST ?uploadId=X) share the same route
@@ -32,7 +39,7 @@ public static class S3MultipartEndpoint
             if (ObjectKeyValidator.GetValidationError(key) is { } keyError)
                 return S3Xml.Error(S3Errors.InvalidArgument, keyError);
 
-            if (!await metadata.ExistsBucketAsync(bucket))
+            if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
                 return S3Xml.Error(S3Errors.NoSuchBucket, "The specified bucket does not exist.", 404);
 
             if (request.Query.ContainsKey("uploads"))

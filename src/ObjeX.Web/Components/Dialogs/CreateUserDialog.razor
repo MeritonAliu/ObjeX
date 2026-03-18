@@ -1,0 +1,71 @@
+@inject DialogService DialogService
+
+<RadzenStack Gap="1rem" Style="padding:1rem; min-width:340px">
+    <div>
+        <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem">Username</label>
+        <input class="rz-textbox" style="width:100%" value="@_username"
+               @oninput="OnUsernameInput" @onkeydown="OnKeyDown" placeholder="e.g. jsmith" />
+        <span style="font-size:0.75rem; visibility:@(_usernameError is not null ? "visible" : "hidden"); color:var(--rz-danger)">
+            @(_usernameError ?? "placeholder")
+        </span>
+    </div>
+    <div>
+        <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem">Email</label>
+        <input class="rz-textbox" style="width:100%" type="email" value="@_email"
+               @oninput="OnEmailInput" @onkeydown="OnKeyDown" placeholder="user@example.com" />
+        <span style="font-size:0.75rem; visibility:@(_emailError is not null ? "visible" : "hidden"); color:var(--rz-danger)">
+            @(_emailError ?? "placeholder")
+        </span>
+    </div>
+    <div>
+        <label style="display:block; margin-bottom:0.25rem; font-size:0.875rem">Role</label>
+        <RadzenDropDown @bind-Value="_role" Data="_roles" Style="width:100%" />
+    </div>
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+        <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
+        <RadzenButton Text="Create" ButtonStyle="ButtonStyle.Primary"
+                      Disabled="@(!IsValid)"
+                      Click="OnCreate" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+    string _username = string.Empty;
+    string _email = string.Empty;
+    string _role = "User";
+    string? _usernameError;
+    string? _emailError;
+
+    static readonly string[] _roles = ["User", "Manager"];
+
+    public record Result(string Username, string Email, string Role);
+
+    bool IsValid => _usernameError is null && _emailError is null
+        && !string.IsNullOrWhiteSpace(_username) && !string.IsNullOrWhiteSpace(_email);
+
+    void OnUsernameInput(ChangeEventArgs e)
+    {
+        _username = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(_username))
+            _usernameError = "Username is required.";
+        else if (!_username.All(c => char.IsLetterOrDigit(c) || c == '_' || c == '-'))
+            _usernameError = "Only letters, numbers, underscores and hyphens allowed.";
+        else
+            _usernameError = null;
+    }
+
+    void OnEmailInput(ChangeEventArgs e)
+    {
+        _email = e.Value?.ToString() ?? string.Empty;
+        try { _ = new System.Net.Mail.MailAddress(_email); _emailError = null; }
+        catch { _emailError = "Enter a valid email address."; }
+    }
+
+    void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && IsValid) OnCreate();
+        else if (e.Key == "Escape") DialogService.Close(null);
+    }
+
+    void OnCreate() => DialogService.Close(new Result(_username.Trim(), _email.Trim(), _role));
+}

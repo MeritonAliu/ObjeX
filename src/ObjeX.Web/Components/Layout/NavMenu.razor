@@ -6,8 +6,15 @@
     <RadzenPanelMenu>
         <RadzenPanelMenuItem Text="Dashboard" Path="/" Icon="dashboard" />
         <RadzenPanelMenuItem Text="Buckets" Path="/buckets" Icon="storage" />
-<RadzenPanelMenuItem Text="Hangfire" Path="/hangfire" Icon="schedule" />
         <RadzenPanelMenuItem Text="Settings" Path="/settings" Icon="build" />
+        @if (_isAdmin)
+        {
+            <RadzenPanelMenuItem Text="Hangfire" Path="/hangfire" Icon="schedule" />
+        }
+        @if (_isAdmin || _isManager)
+        {
+            <RadzenPanelMenuItem Text="Users" Path="/users" Icon="group" />
+        }
     </RadzenPanelMenu>
 
     <div style="border-top:1px solid var(--rz-border-disabled-color)">
@@ -21,10 +28,14 @@
 
 @code {
     string _username = string.Empty;
+    bool _isAdmin;
+    bool _isManager;
 
     protected override async Task OnInitializedAsync()
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _username = auth.User.Identity?.Name ?? "Unknown";
+        _isAdmin = auth.User.IsInRole("Admin");
+        _isManager = auth.User.IsInRole("Manager");
     }
 }

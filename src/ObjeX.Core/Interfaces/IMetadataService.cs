@@ -9,9 +9,9 @@ namespace ObjeX.Core.Interfaces;
 public interface IMetadataService
 {
     Task<Bucket> CreateBucketAsync(Bucket bucket, CancellationToken ctk = default);
-    Task<Bucket?> GetBucketAsync(string bucketName, CancellationToken ctk = default);
-    Task<IEnumerable<Bucket>> ListBucketsAsync(CancellationToken ctk = default);
-    Task DeleteBucketAsync(string bucketName, CancellationToken ctk = default);
+    Task<Bucket?> GetBucketAsync(string bucketName, string? ownerFilter = null, CancellationToken ctk = default);
+    Task<IEnumerable<Bucket>> ListBucketsAsync(string? ownerFilter = null, CancellationToken ctk = default);
+    Task DeleteBucketAsync(string bucketName, string userId, bool isPrivileged, CancellationToken ctk = default);
     Task<bool> ExistsBucketAsync(string bucketName, CancellationToken ctk = default);
 
     Task<BlobObject> SaveObjectAsync(BlobObject blobObject, CancellationToken ctk = default);

@@ -64,9 +64,14 @@ builder.Services.AddIdentity<User, IdentityRole>(options =>
         options.Password.RequireLowercase = false;
         options.Password.RequireNonAlphanumeric = false;
         options.Password.RequiredLength = 4;
+        options.User.RequireUniqueEmail = true;
     })
     .AddEntityFrameworkStores<ObjeXDbContext>()
-    .AddDefaultTokenProviders();
+    .AddDefaultTokenProviders()
+    .AddClaimsPrincipalFactory<UserClaimsPrincipalFactory<User, IdentityRole>>();
+
+builder.Services.Configure<SecurityStampValidatorOptions>(options =>
+    options.ValidationInterval = TimeSpan.FromMinutes(5));
 
 
 builder.Services.AddAuthentication(options =>
@@ -78,6 +83,8 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddAuthorization();
 builder.Services.ConfigureApplicationCookie(options =>
 {
+    options.ExpireTimeSpan = TimeSpan.FromMinutes(60);
+    options.SlidingExpiration = true;
     options.Events.OnRedirectToLogin = ctx =>
     {
         if (ctx.Request.Path.StartsWithSegments("/api"))
@@ -198,30 +205,31 @@ using (var scope = app.Services.CreateScope())
     db.Database.ExecuteSqlRaw("PRAGMA synchronous=NORMAL;");
     db.Database.ExecuteSqlRaw("PRAGMA busy_timeout=5000;");
     
+    var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
+    foreach (var roleName in new[] { "Admin", "Manager", "User" })
+    {
+        if (!await roleManager.RoleExistsAsync(roleName))
+            await roleManager.CreateAsync(new IdentityRole(roleName));
+    }
+
     if (await userManager.FindByNameAsync("admin") is null)
     {
         var defaultUsername = builder.Configuration["DefaultAdmin:Username"] ?? "admin";
         var defaultEmail = builder.Configuration["DefaultAdmin:Email"] ?? "admin@objex.local";
         var defaultPassword = builder.Configuration["DefaultAdmin:Password"] ?? "admin";
-        
+
         var adminUser = new User
         {
             UserName = defaultUsername,
             Email = defaultEmail,
             EmailConfirmed = true,
-            StorageUsedBytes = 0 // TODO: make 0 default in model property 
+            StorageUsedBytes = 0 // TODO: make 0 default in model property
         };
-        
+
         var result = await userManager.CreateAsync(adminUser, defaultPassword);
-        
+
         if (result.Succeeded)
         {
-            var roleManager = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-            if (!await roleManager.RoleExistsAsync("Admin"))
-            {
-                await roleManager.CreateAsync(new IdentityRole("Admin"));
-                await roleManager.CreateAsync(new IdentityRole("User"));
-            }
             await userManager.AddToRoleAsync(adminUser, "Admin");
 
             app.Logger.LogWarning(

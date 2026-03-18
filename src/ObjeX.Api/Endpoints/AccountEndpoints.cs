@@ -23,7 +23,29 @@ public static class AccountEndpoints
             {
                 var result = await signInManager.PasswordSignInAsync(user, password, isPersistent: true, lockoutOnFailure: false);
                 if (result.Succeeded)
+                {
+                    if (user.IsDeactivated)
+                    {
+                        await signInManager.SignOutAsync();
+                        var dqs = $"error=1&msg={Uri.EscapeDataString("Your account has been deactivated.")}&login={Uri.EscapeDataString(login)}";
+                        if (!string.IsNullOrEmpty(returnUrl)) dqs += $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+                        return Results.Redirect($"/login?{dqs}");
+                    }
+
+                    if (user.MustChangePassword)
+                    {
+                        if (user.TemporaryPasswordExpiresAt.HasValue && user.TemporaryPasswordExpiresAt.Value < DateTime.UtcNow)
+                        {
+                            await signInManager.SignOutAsync();
+                            var eqs = $"error=1&msg={Uri.EscapeDataString("Temporary password expired, contact your administrator.")}&login={Uri.EscapeDataString(login)}";
+                            if (!string.IsNullOrEmpty(returnUrl)) eqs += $"&returnUrl={Uri.EscapeDataString(returnUrl)}";
+                            return Results.Redirect($"/login?{eqs}");
+                        }
+                        return Results.Redirect("/change-password");
+                    }
+
                     return Results.Redirect(string.IsNullOrEmpty(returnUrl) ? "/" : returnUrl);
+                }
             }
 
             var sanitizedLogin = login.Replace("\r", "").Replace("\n", "");

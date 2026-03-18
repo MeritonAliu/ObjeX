@@ -24,6 +24,11 @@ public class ObjeXDbContext(DbContextOptions<ObjeXDbContext> options) : Identity
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.HasIndex(e => e.Name).IsUnique();
             entity.Property(e => e.Name).IsRequired();
+            entity.Property(e => e.OwnerId).IsRequired();
+            entity.HasOne(e => e.Owner)
+                .WithMany()
+                .HasForeignKey(e => e.OwnerId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<S3Credential>(entity =>

@@ -159,11 +159,17 @@
     string _currentPrefix = string.Empty;
     bool _uploading;
     bool _bucketExists = true;
+    string _currentUserId = string.Empty;
+    bool _isPrivileged;
 
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _isPrivileged = auth.User.IsInRole("Admin") || auth.User.IsInRole("Manager");
+
         _currentPrefix = PrefixParam ?? string.Empty;
-        _bucketExists = await MetadataService.ExistsBucketAsync(BucketName);
+        _bucketExists = await MetadataService.GetBucketAsync(BucketName, _isPrivileged ? null : _currentUserId) is not null;
         if (_bucketExists)
             await LoadObjects();
         else
@@ -233,7 +239,7 @@
 
     async Task OnUploadClick()
     {
-        if (!await MetadataService.ExistsBucketAsync(BucketName))
+        if (await MetadataService.GetBucketAsync(BucketName, _isPrivileged ? null : _currentUserId) is null)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Bucket not found", $"\"{BucketName}\" no longer exists.");
             return;

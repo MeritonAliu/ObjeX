@@ -1,3 +1,5 @@
+using System.Security.Claims;
+
 using Microsoft.EntityFrameworkCore;
 
 using ObjeX.Api.S3;
@@ -11,12 +13,18 @@ namespace ObjeX.Api.Endpoints.S3Endpoints;
 
 public static class S3ObjectEndpoint
 {
+    static string GetCallerId(HttpContext ctx) =>
+        ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    static bool IsPrivileged(HttpContext ctx) =>
+        ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Manager");
     public static void MapS3ObjectEndpoints(this WebApplication app, RouteGroupBuilder s3)
     {
         s3.MapPut("/{bucket}/{*key}", async (
             string bucket,
             string key,
             HttpRequest request,
+            HttpContext ctx,
             IConfiguration config,
             IMetadataService metadata,
             IObjectStorageService storage,
@@ -78,7 +86,7 @@ public static class S3ObjectEndpoint
             if (ObjectKeyValidator.GetValidationError(key) is { } keyError)
                 return S3Xml.Error(S3Errors.InvalidArgument, keyError);
 
-            if (!await metadata.ExistsBucketAsync(bucket))
+            if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
                 return S3Xml.Error(S3Errors.NoSuchBucket, "The specified bucket does not exist.", 404);
 
             var minFreeBytes = config.GetValue<long>("Storage:MinimumFreeDiskBytes", 500 * 1024 * 1024);
@@ -110,6 +118,7 @@ public static class S3ObjectEndpoint
             string key,
             bool? download,
             HttpRequest request,
+            HttpContext ctx,
             IMetadataService metadata,
             IObjectStorageService storage,
             ObjeX.Infrastructure.Data.ObjeXDbContext db) =>
@@ -120,6 +129,9 @@ public static class S3ObjectEndpoint
 
             if (ObjectKeyValidator.GetValidationError(key) is { } keyError)
                 return S3Xml.Error(S3Errors.InvalidArgument, keyError);
+
+            if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
+                return S3Xml.Error(S3Errors.NoSuchKey, "The specified key does not exist.", 404);
 
             var obj = await metadata.GetObjectAsync(bucket, key);
             if (obj is null)
@@ -149,6 +161,9 @@ public static class S3ObjectEndpoint
             HttpContext ctx,
             IMetadataService metadata) =>
         {
+            if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
+                return S3Xml.Error(S3Errors.NoSuchKey, "The specified key does not exist.", 404);
+
             var obj = await metadata.GetObjectAsync(bucket, key);
             if (obj is null)
                 return S3Xml.Error(S3Errors.NoSuchKey, "The specified key does not exist.", 404);
@@ -164,11 +179,15 @@ public static class S3ObjectEndpoint
             string bucket,
             string key,
             HttpRequest request,
+            HttpContext ctx,
             IMetadataService metadata,
             IObjectStorageService storage,
             FileSystemStorageService fs,
             ObjeX.Infrastructure.Data.ObjeXDbContext db) =>
         {
+            if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
+                return Results.StatusCode(204); // S3 spec: DELETE is idempotent, non-owned = treat as non-existent
+
             // Multipart Abort: DELETE /{bucket}/{*key}?uploadId=X
             if (request.Query.TryGetValue("uploadId", out var uIdStr))
             {

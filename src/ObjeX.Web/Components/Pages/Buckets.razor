@@ -1,10 +1,16 @@
 @page "/buckets"
 @using ObjeX.Core.Interfaces
 @using ObjeX.Core.Models
+@using ObjeX.Infrastructure.Data
 @using ObjeX.Web.Components.Dialogs
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.EntityFrameworkCore
 @inject IMetadataService MetadataService
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IConfiguration Configuration
+@inject ObjeXDbContext Db
 
 <PageTitle>Buckets — ObjeX</PageTitle>
 
@@ -26,11 +32,33 @@
             <RadzenDataGridColumn TItem="Bucket" Property="TotalSize" Title="Size" Sortable="true">
                 <Template Context="bucket">@FileHelper.FormatBytes(bucket.TotalSize)</Template>
             </RadzenDataGridColumn>
+            @if (_isPrivileged)
+            {
+                <RadzenDataGridColumn TItem="Bucket" Property="Owner.UserName" Title="Owner" Width="120px">
+                    <Template Context="bucket">
+                        @if (bucket.Owner?.UserName == _adminUsername)
+                        {
+                            <RadzenBadge Text="Admin" BadgeStyle="BadgeStyle.Light" Shade="Shade.Default" />
+                        }
+                        else
+                        {
+                            @(bucket.Owner?.UserName ?? _adminUsername)
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            }
             <RadzenDataGridColumn TItem="Bucket" Property="CreatedAt" Title="Created" FormatString="{0:yyyy-MM-dd HH:mm}" />
-            <RadzenDataGridColumn TItem="Bucket" Title="" Width="80px" Sortable="false">
+            <RadzenDataGridColumn TItem="Bucket" Title="" Width="@(_isAdmin ? "100px" : "60px")" Sortable="false">
                 <Template Context="bucket">
-                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
-                                  Click="@(() => OnDeleteBucket(bucket))" />
+                    <RadzenStack Orientation="Orientation.Horizontal" Gap="0" JustifyContent="JustifyContent.End">
+                        @if (_isAdmin)
+                        {
+                            <RadzenButton Icon="manage_accounts" ButtonStyle="ButtonStyle.Info" Variant="Variant.Text"
+                                          title="Change owner" Click="@(() => OnChangeOwner(bucket))" />
+                        }
+                        <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Text"
+                                      Click="@(() => OnDeleteBucket(bucket))" />
+                    </RadzenStack>
                 </Template>
             </RadzenDataGridColumn>
         </Columns>
@@ -40,15 +68,24 @@
 
 @code {
     List<Bucket> _buckets = [];
+    string _currentUserId = string.Empty;
+    bool _isPrivileged;
+    bool _isAdmin;
+    string _adminUsername = "admin";
 
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _isPrivileged = auth.User.IsInRole("Admin") || auth.User.IsInRole("Manager");
+        _isAdmin = auth.User.IsInRole("Admin");
+        _adminUsername = Configuration["DefaultAdmin:Username"] ?? "admin";
         await LoadBuckets();
     }
 
     async Task LoadBuckets()
     {
-        var result = await MetadataService.ListBucketsAsync();
+        var result = await MetadataService.ListBucketsAsync(_isPrivileged ? null : _currentUserId);
         _buckets = result.ToList();
     }
 
@@ -59,7 +96,7 @@
 
         try
         {
-            await MetadataService.CreateBucketAsync(new Bucket { Name = name });
+            await MetadataService.CreateBucketAsync(new Bucket { Name = name, OwnerId = _currentUserId });
             await LoadBuckets();
             NotificationService.Notify(NotificationSeverity.Success, "Bucket created", name);
         }
@@ -80,13 +117,34 @@
 
         try
         {
-            await MetadataService.DeleteBucketAsync(bucket.Name);
+            await MetadataService.DeleteBucketAsync(bucket.Name, _currentUserId, _isPrivileged);
             await LoadBuckets();
             NotificationService.Notify(NotificationSeverity.Success, "Bucket deleted", bucket.Name);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Forbidden", "You do not own this bucket.");
         }
         catch (Exception ex)
         {
             NotificationService.Notify(NotificationSeverity.Error, "Failed to delete bucket", ex.Message);
         }
+    }
+
+    async Task OnChangeOwner(Bucket bucket)
+    {
+        var result = await DialogService.OpenAsync<ChangeOwnerDialog>("Change Owner",
+            new Dictionary<string, object?> { { "Bucket", bucket } },
+            new DialogOptions { CloseDialogOnOverlayClick = true, ShowClose = true });
+
+        if (result is not ChangeOwnerDialog.Result r) return;
+
+        await Db.Buckets
+            .Where(b => b.Id == bucket.Id)
+            .ExecuteUpdateAsync(s => s.SetProperty(b => b.OwnerId, r.UserId));
+
+        await LoadBuckets();
+        NotificationService.Notify(NotificationSeverity.Success, "Owner changed",
+            $"\"{bucket.Name}\" is now owned by {r.UserName}.");
     }
 }

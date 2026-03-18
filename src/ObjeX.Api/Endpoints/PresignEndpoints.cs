@@ -1,5 +1,8 @@
+using System.Security.Claims;
+
 using Microsoft.EntityFrameworkCore;
 
+using ObjeX.Core.Interfaces;
 using ObjeX.Core.Utilities;
 using ObjeX.Infrastructure.Data;
 
@@ -14,9 +17,14 @@ public static class PresignEndpoints
             int? expires,
             HttpContext ctx,
             ObjeXDbContext db,
+            IMetadataService metadata,
             IConfiguration config) =>
         {
-            var userId = ctx.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+            var userId = ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? "";
+            var isPrivileged = ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Manager");
+
+            if (await metadata.GetBucketAsync(bucket, isPrivileged ? null : userId) is null)
+                return Results.Problem("You do not own this bucket.", statusCode: 403);
             var credential = await db.S3Credentials
                 .AsNoTracking()
                 .FirstOrDefaultAsync(c => c.UserId == userId);

@@ -12,6 +12,10 @@ public class Bucket : IHasTimestamps
     public long ObjectCount { get; set; }
     public long TotalSize { get; set; }
 
+    // Ownership
+    public required string OwnerId { get; set; }
+    public User? Owner { get; set; }
+
     // Navigation Properties
     public ICollection<BlobObject> Objects { get; set; } = new List<BlobObject>();
 

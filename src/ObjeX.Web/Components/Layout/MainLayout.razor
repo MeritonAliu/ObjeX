@@ -1,5 +1,10 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ObjeX.Core.Models.User> UserManager
+@using Microsoft.AspNetCore.Identity
 
 <AuthorizeView>
     <Authorized>
@@ -36,6 +41,11 @@
 @code {
     bool _sidebarExpanded = true;
 
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (!firstRender) return;
@@ -45,5 +55,29 @@
             _sidebarExpanded = false;
             StateHasChanged();
         }
+        await CheckDeactivatedAsync();
+    }
+
+    void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => _ = CheckDeactivatedAsync();
+
+    async Task CheckDeactivatedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (!auth.User.Identity?.IsAuthenticated == true) return;
+
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId is null) return;
+
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user?.IsDeactivated == true)
+            Navigation.NavigateTo("/account/logout", forceLoad: true);
+        else if (user?.MustChangePassword == true && !Navigation.Uri.Contains("/change-password"))
+            Navigation.NavigateTo("/change-password", forceLoad: true);
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
     }
 }

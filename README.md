@@ -40,6 +40,16 @@ ObjeX uses two auth mechanisms on separate ports:
 | `9001` | Browser / Blazor UI | Cookie (ASP.NET Core Identity) |
 | `9000` | S3 clients, SDKs, CLI | AWS Signature Version 4 |
 
+### Roles
+
+| Role | Access |
+|------|--------|
+| **Admin** | Everything — user management, role promotion, all buckets, Hangfire, presigned URL settings |
+| **Manager** | Users page, Settings (incl. presigned URLs), all buckets — cannot change roles |
+| **User** | Own buckets only, S3 credentials, dark mode |
+
+The seeded `admin` account is permanent and cannot be deleted or demoted. Create users via **Users → New User** (Admin or Manager only).
+
 ### S3 Credentials
 
 Create credentials in **Settings → S3 Credentials**. The secret access key is shown once on creation — save it.

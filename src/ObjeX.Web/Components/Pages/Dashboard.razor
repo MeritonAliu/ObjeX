@@ -1,8 +1,10 @@
 @page "/"
 @using ObjeX.Core.Interfaces
 @using ObjeX.Core.Models
+@using Microsoft.AspNetCore.Components.Authorization
 @implements IDisposable
 @inject IMetadataService MetadataService
+@inject AuthenticationStateProvider AuthStateProvider
 
 <PageTitle>Dashboard — ObjeX</PageTitle>
 
@@ -197,9 +199,14 @@
     int _totalFileTypeCount;
     DateTime _lastUpdated = DateTime.Now;
     Timer? _timer;
+    string _currentUserId = string.Empty;
+    bool _isPrivileged;
 
     protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _isPrivileged = auth.User.IsInRole("Admin") || auth.User.IsInRole("Manager");
         await LoadStats();
         _timer = new Timer(async _ =>
         {
@@ -210,14 +217,15 @@
 
     async Task LoadStats()
     {
-        _buckets = (await MetadataService.ListBucketsAsync()).OrderByDescending(b => b.TotalSize).ToList();
+        _buckets = (await MetadataService.ListBucketsAsync(_isPrivileged ? null : _currentUserId)).OrderByDescending(b => b.TotalSize).ToList();
         _totalObjects = _buckets.Sum(b => b.ObjectCount);
         _totalSize    = _buckets.Sum(b => b.TotalSize);
         _topBySize  = _buckets.Take(5).ToList();
         _topByCount = _buckets.OrderByDescending(b => b.ObjectCount).Take(5).ToList();
 
+        var ownedBucketNames = _buckets.Select(b => b.Name).ToHashSet();
         var allObjects = (await MetadataService.ListAllObjectsAsync())
-            .Where(o => !o.Key.EndsWith("/"))
+            .Where(o => ownedBucketNames.Contains(o.BucketName) && !o.Key.EndsWith("/"))
             .ToList();
 
         _fileTypeStats = allObjects

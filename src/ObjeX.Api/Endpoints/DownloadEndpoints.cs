@@ -1,17 +1,28 @@
 using System.IO.Compression;
+using System.Security.Claims;
+
 using ObjeX.Core.Interfaces;
 
 namespace ObjeX.Api.Endpoints;
 
 public static class DownloadEndpoints
 {
+    static string GetCallerId(HttpContext ctx) =>
+        ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+
+    static bool IsPrivileged(HttpContext ctx) =>
+        ctx.User.IsInRole("Admin") || ctx.User.IsInRole("Manager");
+
     public static void MapDownloadEndpoints(this WebApplication app)
     {
         // Single-file download — used by the Blazor UI (cookie auth, port 9001)
         app.MapGet("/api/objects/{bucketName}/{*key}", async (
             string bucketName, string key, bool? download,
-            IMetadataService metadata, IObjectStorageService storage) =>
+            HttpContext ctx, IMetadataService metadata, IObjectStorageService storage) =>
         {
+            if (await metadata.GetBucketAsync(bucketName, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
+                return Results.NotFound();
+
             var obj = await metadata.GetObjectAsync(bucketName, key);
             if (obj is null)
                 return Results.NotFound();
@@ -30,9 +41,9 @@ public static class DownloadEndpoints
         // ZIP download — folder/bucket via ?prefix=, or specific files via ?keys=a&keys=b
         app.MapGet("/api/objects/{bucketName}/download", async (
             string bucketName, string? prefix, string[]? keys,
-            IMetadataService metadata, IObjectStorageService storage) =>
+            HttpContext ctx, IMetadataService metadata, IObjectStorageService storage) =>
         {
-            if (!await metadata.ExistsBucketAsync(bucketName))
+            if (await metadata.GetBucketAsync(bucketName, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
                 return Results.NotFound();
 
             List<ObjeX.Core.Models.BlobObject> files;

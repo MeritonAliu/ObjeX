@@ -11,6 +11,7 @@
 <RadzenStack Gap="1.5rem">
     <RadzenText TextStyle="TextStyle.H4">Profile</RadzenText>
 
+
     <RadzenCard>
         <RadzenStack Gap="1.25rem">
             <RadzenText TextStyle="TextStyle.H6">Account</RadzenText>
@@ -39,7 +40,7 @@
 
             <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Start"
                          JustifyContent="JustifyContent.SpaceBetween" Gap="1rem" Style="flex-wrap:wrap">
-                <RadzenStack Gap="0.1rem" Style="min-width:120px;padding-top:0.25rem">
+                <RadzenStack Gap="0.1rem" Style="min-width:120px;max-width:120px;padding-top:0.25rem">
                     <RadzenText>Email</RadzenText>
                     <RadzenText TextStyle="TextStyle.Caption" Style="color:var(--rz-text-secondary-color)">For account recovery</RadzenText>
                 </RadzenStack>
@@ -181,7 +182,17 @@
         var result = await UserManager.ChangePasswordAsync(_user, _currentPassword, _newPassword);
         if (result.Succeeded)
         {
-            Navigation.NavigateTo("/account/logout", forceLoad: true);
+            if (_user.MustChangePassword)
+            {
+                _user.MustChangePassword = false;
+                _user.TemporaryPasswordExpiresAt = null;
+                await UserManager.UpdateAsync(_user);
+                Navigation.NavigateTo("/", forceLoad: true);
+            }
+            else
+            {
+                Navigation.NavigateTo("/account/logout", forceLoad: true);
+            }
         }
         else
         {

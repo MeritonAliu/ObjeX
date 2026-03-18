@@ -23,8 +23,8 @@ src/
 │   └── Storage/         # FileSystemStorageService
 └── ObjeX.Web/           # Blazor Server UI — components, pages, dialogs
     └── Components/
-        ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound
-        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateS3CredentialDialog, ShowS3CredentialDialog, CreateFolderDialog
+        ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound, Users, ChangePassword
+        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateS3CredentialDialog, ShowS3CredentialDialog, CreateFolderDialog, CreateUserDialog, ShowUserPasswordDialog, ChangeOwnerDialog
         └── Layout/      # MainLayout, NavMenu, EmptyLayout
 ```
 
@@ -104,7 +104,11 @@ No `AddAuthenticationSchemes` on the policy — both auth mechanisms set `contex
 
 - `User` model in `ObjeX.Core/Models/` extends `IdentityUser`
 - `ObjeXDbContext` extends `IdentityDbContext<User>`
-- Roles: `Admin`, `User` — seeded on startup alongside default admin
+- Roles: `Admin`, `Manager`, `User` — all three seeded on every startup (idempotent). See role table below.
+- Role hierarchy: Admin (1, permanent singleton) → Manager (0–N, promoted by Admin) → User (default)
+  - **Admin**: full access, user management, role promotion, Settings incl. presigned URLs, Hangfire, all buckets
+  - **Manager**: Users page, Settings incl. presigned URLs, all buckets — cannot promote/demote roles, no Hangfire
+  - **User**: S3 credentials, dark mode, own buckets only
 - Password requirements relaxed for MVP (min 4 chars, no complexity rules)
 - Email flows are no-ops — no `IEmailSender` registered, no email verification
 
@@ -210,9 +214,11 @@ public interface IObjectStorageService
 public interface IMetadataService
 {
     Task<Bucket> CreateBucketAsync(Bucket bucket, CancellationToken ctk = default);
-    Task<Bucket?> GetBucketAsync(string bucketName, CancellationToken ctk = default);
-    Task<IEnumerable<Bucket>> ListBucketsAsync(CancellationToken ctk = default);
-    Task DeleteBucketAsync(string bucketName, CancellationToken ctk = default);
+    Task<Bucket?> GetBucketAsync(string bucketName, string? ownerFilter = null, CancellationToken ctk = default);
+    Task<IEnumerable<Bucket>> ListBucketsAsync(string? ownerFilter = null, CancellationToken ctk = default);
+    Task DeleteBucketAsync(string bucketName, string userId, bool isPrivileged, CancellationToken ctk = default);
+    // ownerFilter: null = no filter (Admin/Manager), userId = restrict to owner (User role)
+    // isPrivileged: true = skip ownership check on delete (Admin/Manager bypass)
     Task<bool> ExistsBucketAsync(string bucketName, CancellationToken ctk = default);
     Task<BlobObject> SaveObjectAsync(BlobObject blobObject, CancellationToken ctk = default);
     Task<BlobObject?> GetObjectAsync(string bucketName, string key, CancellationToken ctk = default);
@@ -240,11 +246,11 @@ public interface IHashService
 ## Models
 
 ```csharp
-// Bucket: Id (Guid), Name, ObjectCount, TotalSize, Objects (nav), CreatedAt, UpdatedAt
+// Bucket: Id (Guid), Name, OwnerId (FK → AspNetUsers, Restrict), Owner? (nav), ObjectCount, TotalSize, Objects (nav), CreatedAt, UpdatedAt
 // BlobObject: Id (Guid), BucketName, Key, Size, ContentType, ETag, StoragePath, Bucket (nav), CreatedAt, UpdatedAt
 // S3Credential: Id (Guid), Name, AccessKeyId, SecretAccessKey (plain), UserId, User (nav), LastUsedAt, CreatedAt, UpdatedAt
-// User: extends IdentityUser — adds StorageUsedBytes
-// All except User implement IHasTimestamps
+// User: extends IdentityUser — adds StorageUsedBytes, IsDeactivated, MustChangePassword, TemporaryPasswordExpiresAt, CreatedAt, UpdatedAt
+// All implement IHasTimestamps (User via explicit properties)
 ```
 
 ---
@@ -466,8 +472,8 @@ dotnet ef database update  # or just run the app — auto-migrates
 5. ~~**Presigned URLs**~~ ✅ — GET presigned URLs, configurable expiry, copy-link UI with duration picker
 6. ~~**Enhanced Blazor UI**~~ ✅ — folder nav, dark mode (system preference + cookie persistence)
 7. **Object Tags** — key-value tags, tag-based search, lifecycle/retention policies
-8. **User Management UI** — registration, user list, password reset (Identity backend already in place)
-9. **Bucket Permissions** — per-bucket ACL, read/write/delete, permission checks in endpoints
+8. ~~**User Management UI**~~ ✅ — Admin/Manager roles, user list, create/deactivate/delete/reset pw, forced password change on first login
+9. ~~**Bucket Permissions**~~ ✅ (ownership) — buckets owned by creator; Admin/Manager see all; User sees own only; enforced at API, S3, and Blazor layers. Full ACL (per-bucket read/write/delete grants) still pending.
 10. **Teams/Orgs** — multi-tenant, org workspaces, team roles, storage quotas
 11. **Storage backends** — swap `FileSystemStorageService` for cloud or chunked storage
 12. **PostgreSQL support** — swap SQLite via same `IMetadataService` interface

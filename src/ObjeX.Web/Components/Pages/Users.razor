@@ -1,0 +1,266 @@
+@page "/users"
+@attribute [Microsoft.AspNetCore.Authorization.Authorize(Roles = "Admin,Manager")]
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+@using ObjeX.Core.Models
+@using ObjeX.Infrastructure.Data
+@using ObjeX.Web.Components.Dialogs
+@inject UserManager<User> UserManager
+@inject ObjeXDbContext Db
+@inject DialogService DialogService
+@inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IConfiguration Configuration
+
+<PageTitle>Users — ObjeX</PageTitle>
+
+<RadzenStack Gap="1.5rem">
+    <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center"
+                 JustifyContent="JustifyContent.SpaceBetween">
+        <RadzenText TextStyle="TextStyle.H4">Users</RadzenText>
+        <RadzenButton Text="New User" Icon="add" ButtonStyle="ButtonStyle.Primary"
+                      Size="ButtonSize.Small" Click="CreateUser" />
+    </RadzenStack>
+
+    <RadzenCard Style="padding:0">
+        <RadzenDataGrid Data="_users" TItem="UserRow" AllowSorting="true" Style="border:none">
+            <Columns>
+                <RadzenDataGridColumn TItem="UserRow" Property="Username" Title="Username" />
+                <RadzenDataGridColumn TItem="UserRow" Property="Email" Title="Email" />
+                <RadzenDataGridColumn TItem="UserRow" Property="Role" Title="Role" Width="100px" />
+                <RadzenDataGridColumn TItem="UserRow" Property="Status" Title="Status" Width="140px">
+                    <Template Context="row">
+                        @if (row.IsDeactivated)
+                        {
+                            <RadzenBadge Text="Deactivated" BadgeStyle="BadgeStyle.Danger" Shade="Shade.Lighter" />
+                        }
+                        else
+                        {
+                            <RadzenBadge Text="Active" BadgeStyle="BadgeStyle.Success" Shade="Shade.Lighter" />
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UserRow" Property="CreatedAt" Title="Created" Width="160px">
+                    <Template Context="row">
+                        @row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                    </Template>
+                </RadzenDataGridColumn>
+                <RadzenDataGridColumn TItem="UserRow" Title="" Width="160px" TextAlign="TextAlign.Right" Sortable="false">
+                    <Template Context="row">
+                        @if (row.Id != _currentUserId && row.Role != "Admin")
+                        {
+                            <RadzenStack Orientation="Orientation.Horizontal" Gap="0" JustifyContent="JustifyContent.End">
+                                @if (_currentUserIsAdmin)
+                                {
+                                    <RadzenButton Icon="@(row.Role == "Manager" ? "person" : "manage_accounts")"
+                                                  Variant="Variant.Text" ButtonStyle="ButtonStyle.Info"
+                                                  Size="ButtonSize.Small"
+                                                  title="@(row.Role == "Manager" ? "Demote to User" : "Promote to Manager")"
+                                                  Click="@(() => ToggleRole(row))" />
+                                }
+                                @if (!row.IsDeactivated)
+                                {
+                                    <RadzenButton Icon="lock_reset" Variant="Variant.Text" ButtonStyle="ButtonStyle.Warning"
+                                                  Size="ButtonSize.Small" title="Reset password"
+                                                  Click="@(() => ResetPassword(row))" />
+                                }
+                                <RadzenButton Icon="@(row.IsDeactivated ? "person_add" : "person_off")"
+                                              Variant="Variant.Text"
+                                              ButtonStyle="@(row.IsDeactivated ? ButtonStyle.Success : ButtonStyle.Warning)"
+                                              Size="ButtonSize.Small"
+                                              title="@(row.IsDeactivated ? "Reactivate" : "Deactivate")"
+                                              Click="@(() => ToggleDeactivate(row))" />
+                                <RadzenButton Icon="delete" Variant="Variant.Text" ButtonStyle="ButtonStyle.Danger"
+                                              Size="ButtonSize.Small" title="Delete user"
+                                              Click="@(() => DeleteUser(row))" />
+                            </RadzenStack>
+                        }
+                    </Template>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </RadzenCard>
+</RadzenStack>
+
+@code {
+    record UserRow(string Id, string Username, string Email, string Role, bool IsDeactivated, DateTime CreatedAt)
+    {
+        public string Status => IsDeactivated ? "Deactivated" : "Active";
+    }
+
+    List<UserRow> _users = [];
+    string _currentUserId = string.Empty;
+    bool _currentUserIsAdmin;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _currentUserIsAdmin = auth.User.IsInRole("Admin");
+        await LoadUsers();
+    }
+
+    async Task LoadUsers()
+    {
+        var users = await Db.Users.OrderBy(u => u.UserName).ToListAsync();
+        var rows = new List<UserRow>();
+        foreach (var u in users)
+        {
+            var roles = await UserManager.GetRolesAsync(u);
+            var role = roles.Contains("Admin") ? "Admin" : roles.Contains("Manager") ? "Manager" : "User";
+            rows.Add(new UserRow(u.Id, u.UserName ?? string.Empty, u.Email ?? string.Empty, role, u.IsDeactivated, u.CreatedAt));
+        }
+        _users = rows;
+    }
+
+    static string GeneratePassword()
+    {
+        const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        var length = Random.Shared.Next(8, 13);
+        return new string(Enumerable.Range(0, length).Select(_ => chars[Random.Shared.Next(chars.Length)]).ToArray());
+    }
+
+    async Task CreateUser()
+    {
+        var result = await DialogService.OpenAsync<CreateUserDialog>("New User",
+            options: new DialogOptions { CloseDialogOnOverlayClick = true, ShowClose = true });
+
+        if (result is not CreateUserDialog.Result r) return;
+
+        var password = GeneratePassword();
+        var user = new User
+        {
+            UserName = r.Username,
+            Email = r.Email,
+            MustChangePassword = true,
+            TemporaryPasswordExpiresAt = DateTime.UtcNow.AddHours(72)
+        };
+
+        var createResult = await UserManager.CreateAsync(user, password);
+        if (!createResult.Succeeded)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Failed",
+                createResult.Errors.First().Description);
+            return;
+        }
+
+        await UserManager.AddToRoleAsync(user, r.Role);
+        await LoadUsers();
+
+        await DialogService.OpenAsync<ShowUserPasswordDialog>($"User Created: {r.Username}",
+            new Dictionary<string, object?> { { "Password", password } },
+            options: new DialogOptions { CloseDialogOnOverlayClick = false, ShowClose = false });
+    }
+
+    async Task ToggleRole(UserRow row)
+    {
+        var isPromoting = row.Role == "User";
+        var action = isPromoting ? "Promote to Manager" : "Demote to User";
+        var confirmed = await DialogService.Confirm(
+            $"{action}: \"{row.Username}\"?",
+            action,
+            new ConfirmOptions { OkButtonText = action, CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        var user = await UserManager.FindByIdAsync(row.Id);
+        if (user is null) return;
+
+        if (isPromoting)
+        {
+            await UserManager.AddToRoleAsync(user, "Manager");
+        }
+        else
+        {
+            await UserManager.RemoveFromRoleAsync(user, "Manager");
+            await UserManager.AddToRoleAsync(user, "User");
+        }
+
+        await UserManager.UpdateSecurityStampAsync(user);
+        await LoadUsers();
+        NotificationService.Notify(NotificationSeverity.Success, action, $"\"{row.Username}\" role updated.");
+    }
+
+    async Task ResetPassword(UserRow row)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Reset password for \"{row.Username}\"? They will be required to change it on next login.",
+            "Reset Password",
+            new ConfirmOptions { OkButtonText = "Reset", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        var user = await UserManager.FindByIdAsync(row.Id);
+        if (user is null) return;
+
+        var password = GeneratePassword();
+        var token = await UserManager.GeneratePasswordResetTokenAsync(user);
+        var result = await UserManager.ResetPasswordAsync(user, token, password);
+        if (!result.Succeeded)
+        {
+            NotificationService.Notify(NotificationSeverity.Error, "Failed", result.Errors.First().Description);
+            return;
+        }
+
+        user.MustChangePassword = true;
+        user.TemporaryPasswordExpiresAt = DateTime.UtcNow.AddHours(72);
+        await UserManager.UpdateAsync(user);
+        await UserManager.UpdateSecurityStampAsync(user);
+
+        await DialogService.OpenAsync<ShowUserPasswordDialog>($"New Password: {row.Username}",
+            new Dictionary<string, object?> { { "Password", password } },
+            options: new DialogOptions { CloseDialogOnOverlayClick = false, ShowClose = false });
+    }
+
+    async Task ToggleDeactivate(UserRow row)
+    {
+        var user = await UserManager.FindByIdAsync(row.Id);
+        if (user is null) return;
+
+        var action = user.IsDeactivated ? "Reactivate" : "Deactivate";
+        var confirmed = await DialogService.Confirm(
+            $"{action} user \"{row.Username}\"?",
+            action,
+            new ConfirmOptions { OkButtonText = action, CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        user.IsDeactivated = !user.IsDeactivated;
+        await UserManager.UpdateAsync(user);
+        await UserManager.UpdateSecurityStampAsync(user);
+        await LoadUsers();
+
+        NotificationService.Notify(NotificationSeverity.Success, action + "d", $"\"{row.Username}\" {action.ToLower()}d.");
+    }
+
+    async Task DeleteUser(UserRow row)
+    {
+        var confirmed = await DialogService.Confirm(
+            $"Delete user \"{row.Username}\"? This cannot be undone.",
+            "Delete User",
+            new ConfirmOptions { OkButtonText = "Delete", CancelButtonText = "Cancel" });
+
+        if (confirmed != true) return;
+
+        var user = await UserManager.FindByIdAsync(row.Id);
+        if (user is null) return;
+
+        // Transfer any buckets owned by this user to admin before deletion
+        var adminUsername = Configuration["DefaultAdmin:Username"] ?? "admin";
+        var adminUser = await UserManager.FindByNameAsync(adminUsername);
+        if (adminUser is not null)
+        {
+            await Db.Buckets
+                .Where(b => b.OwnerId == user.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(b => b.OwnerId, adminUser.Id));
+        }
+
+        // Clear tracked Bucket entities to prevent EF Core from nulling owner_id when deleting the user
+        Db.ChangeTracker.Clear();
+
+        await UserManager.DeleteAsync(user);
+        await LoadUsers();
+
+        NotificationService.Notify(NotificationSeverity.Success, "Deleted", $"User \"{row.Username}\" deleted.");
+    }
+}

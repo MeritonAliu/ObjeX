@@ -24,29 +24,34 @@ public class SqliteMetadataService(ObjeXDbContext ctx) : IMetadataService
         return bucket;
     }
 
-    public async Task<Bucket?> GetBucketAsync(string bucketName, CancellationToken ctk = default)
+    public async Task<Bucket?> GetBucketAsync(string bucketName, string? ownerFilter = null, CancellationToken ctk = default)
     {
-        return await ctx.Buckets.FirstOrDefaultAsync(b => b.Name == bucketName, ctk);
+        var query = ctx.Buckets.Include(b => b.Owner).Where(b => b.Name == bucketName);
+        if (ownerFilter is not null)
+            query = query.Where(b => b.OwnerId == ownerFilter);
+        return await query.FirstOrDefaultAsync(ctk);
     }
 
-    public async Task<IEnumerable<Bucket>> ListBucketsAsync(CancellationToken ctk = default)
+    public async Task<IEnumerable<Bucket>> ListBucketsAsync(string? ownerFilter = null, CancellationToken ctk = default)
     {
-        return await ctx.Buckets.ToListAsync(ctk);
+        var query = ctx.Buckets.Include(b => b.Owner).AsQueryable();
+        if (ownerFilter is not null)
+            query = query.Where(b => b.OwnerId == ownerFilter);
+        return await query.ToListAsync(ctk);
     }
 
-    public async Task DeleteBucketAsync(string bucketName, CancellationToken ctk = default)
+    public async Task DeleteBucketAsync(string bucketName, string userId, bool isPrivileged, CancellationToken ctk = default)
     {
         var bucket = await ctx.Buckets.FirstOrDefaultAsync(b => b.Name == bucketName, ctk);
-        if (bucket is not null)
-        {
-            // Delete all objects in the bucket first
-            var objects = await ctx.BlobObjects.Where(o => o.BucketName == bucketName).ToListAsync(ctk);
-            ctx.BlobObjects.RemoveRange(objects);
-                
-            // Then delete the bucket
-            ctx.Buckets.Remove(bucket);
-            await ctx.SaveChangesAsync(ctk);
-        }
+        if (bucket is null) return;
+
+        if (!isPrivileged && bucket.OwnerId != userId)
+            throw new UnauthorizedAccessException($"You do not own bucket '{bucketName}'.");
+
+        var objects = await ctx.BlobObjects.Where(o => o.BucketName == bucketName).ToListAsync(ctk);
+        ctx.BlobObjects.RemoveRange(objects);
+        ctx.Buckets.Remove(bucket);
+        await ctx.SaveChangesAsync(ctk);
     }
 
     public async Task<bool> ExistsBucketAsync(string bucketName, CancellationToken ctk = default)
@@ -133,7 +138,7 @@ public class SqliteMetadataService(ObjeXDbContext ctx) : IMetadataService
 
     public async Task UpdateBucketStatsAsync(string bucketName, CancellationToken ctk = default)
     {
-        var bucket = await GetBucketAsync(bucketName, ctk);
+        var bucket = await GetBucketAsync(bucketName, null, ctk);
         if (bucket is null) return;
 
         var stats = await ctx.BlobObjects

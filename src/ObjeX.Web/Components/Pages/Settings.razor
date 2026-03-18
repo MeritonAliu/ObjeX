@@ -26,6 +26,8 @@
         </RadzenStack>
     </RadzenCard>
 
+    @if (_isAdmin || _isManager)
+    {
     <RadzenCard>
         <RadzenStack Gap="1rem">
             <RadzenText TextStyle="TextStyle.H6">Presigned URLs</RadzenText>
@@ -64,6 +66,7 @@
             </RadzenStack>
         </RadzenStack>
     </RadzenCard>
+    }
 
     <RadzenCard>
         <RadzenStack Gap="1rem">
@@ -120,6 +123,8 @@
 
 @code {
     bool _isDark;
+    bool _isAdmin;
+    bool _isManager;
     string _userId = string.Empty;
     List<S3Credential> _credentials = [];
 
@@ -145,8 +150,10 @@
     {
         var auth = await AuthStateProvider.GetAuthenticationStateAsync();
         _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? string.Empty;
+        _isAdmin = auth.User.IsInRole("Admin");
+        _isManager = auth.User.IsInRole("Manager");
         await LoadCredentials();
-        await LoadPresignSettings();
+        if (_isAdmin || _isManager) await LoadPresignSettings();
     }
 
     async Task LoadPresignSettings()

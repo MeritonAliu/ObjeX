@@ -37,9 +37,6 @@
                 </RadzenStack>
             </form>
 
-            <RadzenText TextStyle="TextStyle.Caption" style="color:var(--rz-text-secondary-color); text-align:center">
-                Default: admin / admin
-            </RadzenText>
         </RadzenStack>
     </RadzenCard>
 </div>
@@ -47,6 +44,7 @@
 @code {
     [SupplyParameterFromQuery] public string? ReturnUrl { get; set; }
     [SupplyParameterFromQuery] public string? Error { get; set; }
+    [SupplyParameterFromQuery] public string? Msg { get; set; }
     [SupplyParameterFromQuery(Name = "login")] public string? LoginValue { get; set; }
 
     protected override async Task OnInitializedAsync()
@@ -60,7 +58,8 @@
     {
         if (firstRender && Error == "1")
         {
-            NotificationService.Notify(NotificationSeverity.Error, "Login failed", "Invalid username/email or password.");
+            var message = !string.IsNullOrWhiteSpace(Msg) ? Msg : "Invalid username/email or password.";
+            NotificationService.Notify(NotificationSeverity.Error, "Login failed", message);
             await InvokeAsync(StateHasChanged);
         }
     }

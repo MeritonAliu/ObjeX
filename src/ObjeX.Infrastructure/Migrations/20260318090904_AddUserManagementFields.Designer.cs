@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using ObjeX.Infrastructure.Data;
 
@@ -10,9 +11,11 @@ using ObjeX.Infrastructure.Data;
 namespace ObjeX.Infrastructure.Migrations
 {
     [DbContext(typeof(ObjeXDbContext))]
-    partial class ObjeXDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260318090904_AddUserManagementFields")]
+    partial class AddUserManagementFields
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.5");
@@ -248,11 +251,6 @@ namespace ObjeX.Infrastructure.Migrations
                         .HasColumnType("INTEGER")
                         .HasColumnName("object_count");
 
-                    b.Property<string>("OwnerId")
-                        .IsRequired()
-                        .HasColumnType("TEXT")
-                        .HasColumnName("owner_id");
-
                     b.Property<long>("TotalSize")
                         .HasColumnType("INTEGER")
                         .HasColumnName("total_size");
@@ -270,9 +268,6 @@ namespace ObjeX.Infrastructure.Migrations
                     b.HasIndex("Name")
                         .IsUnique()
                         .HasDatabaseName("ix_buckets_name");
-
-                    b.HasIndex("OwnerId")
-                        .HasDatabaseName("ix_buckets_owner_id");
 
                     b.ToTable("buckets", (string)null);
                 });
@@ -614,18 +609,6 @@ namespace ObjeX.Infrastructure.Migrations
                         .HasConstraintName("fk_blob_objects_buckets_bucket_name");
 
                     b.Navigation("Bucket");
-                });
-
-            modelBuilder.Entity("ObjeX.Core.Models.Bucket", b =>
-                {
-                    b.HasOne("ObjeX.Core.Models.User", "Owner")
-                        .WithMany()
-                        .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired()
-                        .HasConstraintName("fk_buckets_users_owner_id");
-
-                    b.Navigation("Owner");
                 });
 
             modelBuilder.Entity("ObjeX.Core.Models.MultipartUploadPart", b =>
