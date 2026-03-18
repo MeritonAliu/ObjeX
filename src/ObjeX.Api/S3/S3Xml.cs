@@ -28,6 +28,42 @@ public static class S3Xml
         return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
     }
 
+    public static IResult ListObjectsV2(string bucket, IEnumerable<BlobObject> objects, IEnumerable<string> commonPrefixes, string? prefix, string? delimiter, string? continuationToken, string? startAfter)
+    {
+        var objList = objects.Where(o => !o.Key.EndsWith('/')).ToList();
+        var xml = new StringBuilder();
+        xml.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        xml.AppendLine("<ListBucketResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+        xml.AppendLine($"  <Name>{Escape(bucket)}</Name>");
+        xml.AppendLine($"  <Prefix>{Escape(prefix)}</Prefix>");
+        if (delimiter is not null)
+            xml.AppendLine($"  <Delimiter>{Escape(delimiter)}</Delimiter>");
+        xml.AppendLine("  <IsTruncated>false</IsTruncated>");
+        xml.AppendLine($"  <KeyCount>{objList.Count}</KeyCount>");
+        if (continuationToken is not null)
+            xml.AppendLine($"  <ContinuationToken>{Escape(continuationToken)}</ContinuationToken>");
+        if (startAfter is not null)
+            xml.AppendLine($"  <StartAfter>{Escape(startAfter)}</StartAfter>");
+        foreach (var obj in objList)
+        {
+            xml.AppendLine("  <Contents>");
+            xml.AppendLine($"    <Key>{Escape(obj.Key)}</Key>");
+            xml.AppendLine($"    <LastModified>{obj.UpdatedAt:yyyy-MM-ddTHH:mm:ss.fffZ}</LastModified>");
+            xml.AppendLine($"    <ETag>&quot;{Escape(obj.ETag)}&quot;</ETag>");
+            xml.AppendLine($"    <Size>{obj.Size}</Size>");
+            xml.AppendLine("    <StorageClass>STANDARD</StorageClass>");
+            xml.AppendLine("  </Contents>");
+        }
+        foreach (var cp in commonPrefixes)
+        {
+            xml.AppendLine("  <CommonPrefixes>");
+            xml.AppendLine($"    <Prefix>{Escape(cp)}</Prefix>");
+            xml.AppendLine("  </CommonPrefixes>");
+        }
+        xml.AppendLine("</ListBucketResult>");
+        return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
+    }
+
     public static IResult ListObjects(string bucket, IEnumerable<BlobObject> objects, IEnumerable<string> commonPrefixes, string? prefix, string? delimiter)
     {
         var xml = new StringBuilder();

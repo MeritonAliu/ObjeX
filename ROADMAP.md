@@ -90,7 +90,7 @@
 - [x] `?download=true` query param forces `application/octet-stream` attachment (cross-origin download fix)
 - [x] AWS Signature V4 authentication — `SigV4Parser`, `SigV4Signer`, `SigV4AuthMiddleware`; canonical request, timestamp replay protection, presigned URL expiry, payload hash verification
 - [x] `aws-chunked` streaming — `STREAMING-*` payload hash bypassed in `SigV4AuthMiddleware`; outer request signature still verified
-- [x] `ListObjects` with prefix + delimiter support (`GET /{bucket}?prefix=&delimiter=`)
+- [x] `ListObjects` (V1) and `ListObjectsV2` (`?list-type=2`) with prefix + delimiter support; `continuation-token` and `start-after` echoed back for client compatibility
 - [x] S3 error response XML format for all error cases — all errors via `S3Xml.Error()` consistently
 - [x] Compatibility testing with `aws-cli` — verified uploads, downloads, multipart, presigned URLs
 

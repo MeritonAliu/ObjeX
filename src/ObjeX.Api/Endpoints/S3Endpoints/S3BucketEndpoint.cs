@@ -56,13 +56,21 @@ public static class S3BucketEndpoint
             return Results.StatusCode(204);
         });
 
-        s3.MapGet("/{bucket}", async (string bucket, string? prefix, string? delimiter, HttpContext ctx, IMetadataService metadata) =>
+        s3.MapGet("/{bucket}", async (string bucket, string? prefix, string? delimiter, HttpRequest request, HttpContext ctx, IMetadataService metadata) =>
         {
             var b = await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx));
             if (b is null)
                 return S3Xml.Error(S3Errors.NoSuchBucket, "The specified bucket does not exist.", 404);
 
             var result = await metadata.ListObjectsAsync(bucket, prefix, delimiter);
+
+            if (request.Query["list-type"] == "2")
+            {
+                var continuationToken = request.Query["continuation-token"].FirstOrDefault();
+                var startAfter = request.Query["start-after"].FirstOrDefault();
+                return S3Xml.ListObjectsV2(bucket, result.Objects, result.CommonPrefixes, prefix, delimiter, continuationToken, startAfter);
+            }
+
             return S3Xml.ListObjects(bucket, result.Objects, result.CommonPrefixes, prefix, delimiter);
         });
     }
