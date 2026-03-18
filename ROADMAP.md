@@ -200,9 +200,14 @@ CI is currently build-only. Before production-ready claim, need:
 - Backup and restore drill — stop, backup, wipe, restore, verify `/health/ready` + spot-check downloads
 - Hangfire GC job triggered manually — verify orphaned blobs removed, metadata-backed blobs untouched
 
-### 14. ETag Verification on Read
+### 14. ETag Verification on Read — Deferred
 
-Currently ETag is computed on upload and stored, but never checked on download. A corrupt or partially-overwritten blob file returns 200 with bad bytes. Fix: re-hash on read and compare; return 500 with a clear error if mismatch.
+`VerifyBlobIntegrityJob` (weekly) is the primary integrity mechanism for v1.0 — it covers silent corruption before users hit it. Re-hashing on every read is a performance regression for large files (10GB = ~20s CPU before first byte).
+
+Planned approach:
+- **v1.0** — weekly job covers it ✅ (already exists)
+- **v1.1** — opt-in `x-objex-verify-integrity: true` request header; re-hash before streaming, return 500 if mismatch; zero overhead for normal clients
+- **v1.2** — streaming MD5 passthrough on all reads, log mismatches silently, expose corruption counters on `/health/integrity`
 
 ---
 
