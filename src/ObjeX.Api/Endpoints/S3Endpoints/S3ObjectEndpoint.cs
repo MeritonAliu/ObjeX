@@ -47,6 +47,9 @@ public static class S3ObjectEndpoint
                 if (upload is null)
                     return S3Xml.Error(S3Errors.NoSuchUpload, "The specified upload does not exist.", 404);
 
+                if (!IsPrivileged(ctx) && upload.InitiatedByUserId != GetCallerId(ctx))
+                    return S3Xml.Error(S3Errors.NoSuchUpload, "The specified upload does not exist.", 404);
+
                 var partMinFreeBytes = config.GetValue<long>("Storage:MinimumFreeDiskBytes", 500 * 1024 * 1024);
                 if (fs.GetAvailableFreeSpace() < partMinFreeBytes)
                     return S3Xml.Error(S3Errors.EntityTooLarge, "Insufficient disk space.", 507);
