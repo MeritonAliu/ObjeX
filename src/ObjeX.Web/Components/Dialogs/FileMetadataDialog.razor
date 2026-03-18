@@ -1,0 +1,61 @@
+<RadzenStack Gap="0">
+    <div class="meta-row">
+        <span class="meta-label">Key</span>
+        <span class="meta-value" style="word-break:break-all">@Key</span>
+    </div>
+    <div class="meta-row">
+        <span class="meta-label">Content Type</span>
+        <span class="meta-value">@ContentType</span>
+    </div>
+    <div class="meta-row">
+        <span class="meta-label">Size</span>
+        <span class="meta-value">@FileHelper.FormatBytes(Size) <span style="color:var(--rz-text-secondary-color);font-size:0.8rem">(@Size.ToString("N0") bytes)</span></span>
+    </div>
+    <div class="meta-row">
+        <span class="meta-label">ETag</span>
+        <code class="meta-value" style="font-size:0.82rem">@ETag</code>
+    </div>
+    <div class="meta-row">
+        <span class="meta-label">Uploaded</span>
+        <span class="meta-value">@CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+    </div>
+    <div class="meta-row">
+        <span class="meta-label">Last Modified</span>
+        <span class="meta-value">@UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+    </div>
+</RadzenStack>
+
+<RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Style="margin-top:1.25rem">
+    <RadzenButton Text="Close" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Small"
+                  Click="@(() => DialogService.Close())" />
+</RadzenStack>
+
+<style>
+    .meta-row {
+        display: flex;
+        align-items: baseline;
+        gap: 1rem;
+        padding: 0.55rem 0;
+        border-bottom: 1px solid var(--rz-border-disabled-color);
+    }
+    .meta-row:last-child { border-bottom: none; }
+    .meta-label {
+        flex: 0 0 110px;
+        font-size: 0.8rem;
+        color: var(--rz-text-secondary-color);
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+    .meta-value { flex: 1; }
+</style>
+
+@code {
+    [Parameter] public string Key         { get; set; } = string.Empty;
+    [Parameter] public string ContentType { get; set; } = string.Empty;
+    [Parameter] public long   Size        { get; set; }
+    [Parameter] public string ETag        { get; set; } = string.Empty;
+    [Parameter] public DateTime CreatedAt { get; set; }
+    [Parameter] public DateTime UpdatedAt { get; set; }
+
+    [Inject] DialogService DialogService { get; set; } = null!;
+}

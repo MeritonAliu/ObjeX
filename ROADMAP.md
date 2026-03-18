@@ -124,7 +124,7 @@
 - ~~Image and PDF inline previews~~ ✅ — eye button opens dialog; supports image, video, audio, PDF, text
 - ~~Bulk select: delete multiple~~ ✅ — checkbox column, bulk delete + ZIP download, action bar
 - Mobile-responsive layout
-- File metadata viewer (content-type, ETag, size, dates)
+- ~~File metadata viewer (content-type, ETag, size, dates)~~ ✅ — info button opens dialog with key, content-type, size, ETag, uploaded, last modified
 - Storage analytics charts (usage over time, per-bucket breakdown)
 - ~~Folder navigation~~ ✅, ~~Dark mode~~ ✅, ~~ZIP download~~ ✅
 
