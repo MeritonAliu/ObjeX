@@ -16,31 +16,105 @@
     </RadzenStack>
 
     <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="flex-wrap:wrap">
-        <RadzenCard Style="flex:1;min-width:140px">
-            <RadzenStack Gap="0.25rem">
-                <RadzenText TextStyle="TextStyle.Overline">Total Buckets</RadzenText>
+        <RadzenCard class="stat-card">
+            <RadzenStack Gap="0.4rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Overline">Total Buckets</RadzenText>
+                    <RadzenIcon Icon="folder" Style="color:var(--rz-primary);opacity:0.8;font-size:1.4rem" />
+                </RadzenStack>
                 <RadzenText TextStyle="TextStyle.H3">@_buckets.Count</RadzenText>
             </RadzenStack>
         </RadzenCard>
-        <RadzenCard Style="flex:1;min-width:140px">
-            <RadzenStack Gap="0.25rem">
-                <RadzenText TextStyle="TextStyle.Overline">Total Objects</RadzenText>
+        <RadzenCard class="stat-card">
+            <RadzenStack Gap="0.4rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Overline">Total Objects</RadzenText>
+                    <RadzenIcon Icon="description" Style="color:var(--rz-primary);opacity:0.8;font-size:1.4rem" />
+                </RadzenStack>
                 <RadzenText TextStyle="TextStyle.H3">@_totalObjects.ToString("N0")</RadzenText>
             </RadzenStack>
         </RadzenCard>
-        <RadzenCard Style="flex:1;min-width:140px">
-            <RadzenStack Gap="0.25rem">
-                <RadzenText TextStyle="TextStyle.Overline">Storage Used</RadzenText>
+        <RadzenCard class="stat-card">
+            <RadzenStack Gap="0.4rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Overline">Storage Used</RadzenText>
+                    <RadzenIcon Icon="save" Style="color:var(--rz-primary);opacity:0.8;font-size:1.4rem" />
+                </RadzenStack>
                 <RadzenText TextStyle="TextStyle.H3">@FileHelper.FormatBytes(_totalSize)</RadzenText>
             </RadzenStack>
         </RadzenCard>
-        <RadzenCard Style="flex:1;min-width:140px">
-            <RadzenStack Gap="0.25rem">
-                <RadzenText TextStyle="TextStyle.Overline">Avg Object Size</RadzenText>
+        <RadzenCard class="stat-card">
+            <RadzenStack Gap="0.4rem">
+                <RadzenStack Orientation="Orientation.Horizontal" AlignItems="AlignItems.Center" JustifyContent="JustifyContent.SpaceBetween">
+                    <RadzenText TextStyle="TextStyle.Overline">Avg Object Size</RadzenText>
+                    <RadzenIcon Icon="compress" Style="color:var(--rz-primary);opacity:0.8;font-size:1.4rem" />
+                </RadzenStack>
                 <RadzenText TextStyle="TextStyle.H3">@(_totalObjects > 0 ? FileHelper.FormatBytes(_totalSize / _totalObjects) : "—")</RadzenText>
             </RadzenStack>
         </RadzenCard>
     </RadzenStack>
+
+    @if (_buckets.Count >= 2)
+    {
+        <RadzenStack Orientation="Orientation.Horizontal" Gap="1rem" Style="flex-wrap:wrap">
+            <RadzenCard Style="flex:1;min-width:260px;overflow:visible">
+                <RadzenStack Gap="0.75rem">
+                    <RadzenText TextStyle="TextStyle.H6">Storage by Bucket</RadzenText>
+                    <RadzenChart Style="height:240px;overflow:visible">
+                        <RadzenDonutSeries Data="@_buckets" CategoryProperty="Name" ValueProperty="TotalSize"
+                                           TItem="Bucket" InnerRadius="60">
+                            <TooltipTemplate Context="data">
+                                <div>
+                                    <div style="font-weight:600;margin-bottom:2px">@data.Name</div>
+                                    <div>@FileHelper.FormatBytes(data.TotalSize)</div>
+                                    @if (_totalSize > 0)
+                                    {
+                                        <div style="opacity:0.7;font-size:0.85em">@($"{(double)data.TotalSize / _totalSize * 100:F1}%")</div>
+                                    }
+                                </div>
+                            </TooltipTemplate>
+                        </RadzenDonutSeries>
+                    </RadzenChart>
+                </RadzenStack>
+            </RadzenCard>
+            <RadzenCard Style="flex:1;min-width:260px;overflow:visible">
+                <RadzenStack Gap="0.75rem">
+                    <RadzenText TextStyle="TextStyle.H6">Objects by Bucket</RadzenText>
+                    <RadzenChart Style="height:240px;overflow:visible">
+                        <RadzenColumnSeries Data="@_buckets" CategoryProperty="Name" ValueProperty="ObjectCount"
+                                            TItem="Bucket" Title="Objects" />
+                        <RadzenCategoryAxis />
+                        <RadzenValueAxis />
+                        <RadzenLegend Visible="false" />
+                    </RadzenChart>
+                </RadzenStack>
+            </RadzenCard>
+            @if (_fileTypeStats.Count >= 2)
+            {
+                <RadzenCard Style="flex:1;min-width:260px;overflow:visible">
+                    <RadzenStack Gap="0.75rem">
+                        <RadzenText TextStyle="TextStyle.H6">File Types</RadzenText>
+                        <RadzenChart Style="height:240px;overflow:visible">
+                            <RadzenDonutSeries Data="@_fileTypeStats" CategoryProperty="Label" ValueProperty="Count"
+                                               TItem="FileTypeStat" InnerRadius="60">
+                                <TooltipTemplate Context="data">
+                                    <div>
+                                        <div style="font-weight:600;margin-bottom:2px">@data.Label</div>
+                                        <div>@data.Count files</div>
+                                        @if (_totalFileTypeCount > 0)
+                                        {
+                                            <div style="opacity:0.7;font-size:0.85em">@($"{(double)data.Count / _totalFileTypeCount * 100:F1}%")</div>
+                                        }
+                                    </div>
+                                </TooltipTemplate>
+                            </RadzenDonutSeries>
+                        </RadzenChart>
+                    </RadzenStack>
+                </RadzenCard>
+            }
+        </RadzenStack>
+    }
+
 
     @if (_buckets.Count > 0)
     {
@@ -88,12 +162,28 @@
 
 <style>
     .rz-data-grid-data td { height: 44px !important; padding-top: 0 !important; padding-bottom: 0 !important; }
+
+    .stat-card {
+        flex: 1;
+        min-width: 140px;
+        border-left: 3px solid var(--rz-primary);
+    }
+    .stat-icon {
+        font-size: 1.4rem;
+        color: var(--rz-primary);
+        opacity: 0.8;
+    }
+
 </style>
 
 @code {
+    record FileTypeStat(string Label, int Count);
+
     List<Bucket> _buckets = [];
+    List<FileTypeStat> _fileTypeStats = [];
     long _totalObjects;
     long _totalSize;
+    int _totalFileTypeCount;
     DateTime _lastUpdated = DateTime.Now;
     Timer? _timer;
 
@@ -111,9 +201,25 @@
     {
         _buckets = (await MetadataService.ListBucketsAsync()).OrderByDescending(b => b.TotalSize).ToList();
         _totalObjects = _buckets.Sum(b => b.ObjectCount);
-        _totalSize = _buckets.Sum(b => b.TotalSize);
+        _totalSize    = _buckets.Sum(b => b.TotalSize);
+
+        var allObjects = (await MetadataService.ListAllObjectsAsync())
+            .Where(o => !o.Key.EndsWith("/"))
+            .ToList();
+
+        _fileTypeStats = allObjects
+            .GroupBy(o => {
+                var ext = System.IO.Path.GetExtension(o.Key).ToLowerInvariant();
+                return string.IsNullOrEmpty(ext) ? "other" : ext;
+            })
+            .Select(g => new FileTypeStat(g.Key, g.Count()))
+            .OrderByDescending(x => x.Count)
+            .Take(8)
+            .ToList();
+
+        _totalFileTypeCount = _fileTypeStats.Sum(x => x.Count);
         _lastUpdated = DateTime.Now;
     }
 
-    public void Dispose() => _timer?.Dispose();
+public void Dispose() => _timer?.Dispose();
 }
