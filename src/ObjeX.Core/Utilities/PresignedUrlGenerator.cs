@@ -8,7 +8,7 @@ public static class PresignedUrlGenerator
     public static string Generate(
         string s3BaseUrl, string bucket, string key,
         string accessKeyId, string secretAccessKey,
-        int expiresSeconds, string region = "us-east-1")
+        int expiresSeconds, string method = "GET", string region = "us-east-1")
     {
         var now       = DateTime.UtcNow;
         var timestamp = now.ToString("yyyyMMdd'T'HHmmss'Z'");
@@ -31,7 +31,7 @@ public static class PresignedUrlGenerator
                          + string.Join("/", key.Split('/').Select(UriEncode));
 
         var canonicalRequest = string.Join("\n",
-            "GET", canonicalUri, canonicalQueryString,
+            method, canonicalUri, canonicalQueryString,
             $"host:{host}\n", "host", "UNSIGNED-PAYLOAD");
 
         var stringToSign = string.Join("\n",

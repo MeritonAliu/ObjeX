@@ -34,6 +34,9 @@
             <RadzenButton Text="New Folder" Icon="create_new_folder"
                           ButtonStyle="ButtonStyle.Light" Disabled="@(!_bucketExists)"
                           Click="@OnNewFolderClick" />
+            <RadzenButton Text="Upload Link" Icon="link"
+                          ButtonStyle="ButtonStyle.Light" Disabled="@(!_bucketExists)"
+                          Click="@OnGenerateUploadLinkClick" />
             <RadzenButton Text="@(_uploading ? "Uploading..." : "Upload")" Icon="upload"
                           ButtonStyle="ButtonStyle.Primary" Disabled="@(_uploading || !_bucketExists)"
                           Click="@OnUploadClick" />
@@ -481,5 +484,37 @@
 
         var expiresAt = DateTime.Now.AddSeconds(expiresSeconds);
         NotificationService.Notify(NotificationSeverity.Success, "Link copied", $"Expires at {expiresAt:HH:mm:ss}");
+    }
+
+    async Task OnGenerateUploadLinkClick()
+    {
+        var auth = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "";
+
+        var credential = await Db.S3Credentials.AsNoTracking()
+            .FirstOrDefaultAsync(c => c.UserId == userId);
+
+        if (credential is null)
+        {
+            NotificationService.Notify(NotificationSeverity.Warning, "No S3 credential", "Create one in Settings first.");
+            return;
+        }
+
+        var settings  = await Db.SystemSettings.FindAsync(1);
+        var maxExpiry = settings?.PresignedUrlMaxExpirySeconds ?? 604800;
+        var s3BaseUrl = Configuration["S3:PublicUrl"] ?? "http://localhost:9000";
+
+        await DialogService.OpenAsync<Dialogs.GenerateUploadLinkDialog>(
+            "Generate Upload Link",
+            new Dictionary<string, object?>
+            {
+                { "BucketName",      BucketName },
+                { "Prefix",          _currentPrefix },
+                { "S3BaseUrl",       s3BaseUrl },
+                { "AccessKeyId",     credential.AccessKeyId },
+                { "SecretAccessKey", credential.SecretAccessKey },
+                { "MaxSeconds",      maxExpiry },
+            },
+            new DialogOptions { Width = "480px", CloseDialogOnOverlayClick = true });
     }
 }

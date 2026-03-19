@@ -1,0 +1,146 @@
+@using ObjeX.Core.Utilities
+@inject DialogService DialogService
+@inject IJSRuntime JS
+
+@if (_url is null)
+{
+    <RadzenStack Gap="1rem" Style="padding:0.25rem" @onkeydown="OnKeyDown" tabindex="-1">
+        <RadzenFormField Text="Upload key (path in bucket)">
+            <input @oninput="OnKeyInput" value="@_key"
+                   class="rz-textbox" style="width:100%" autofocus placeholder="e.g. uploads/report.pdf" />
+        </RadzenFormField>
+
+        <RadzenStack Gap="0.4rem">
+            <RadzenText TextStyle="TextStyle.Caption" Style="color:var(--rz-text-secondary-color)">Expires in</RadzenText>
+            <RadzenStack Orientation="Orientation.Horizontal" Gap="0.35rem" Style="flex-wrap:wrap">
+                @foreach (var preset in _presets.Where(p => p.Seconds <= MaxSeconds))
+                {
+                    var p = preset;
+                    <span class="upload-chip @(_expiresSeconds == p.Seconds ? "upload-chip--active" : "")"
+                          @onclick="@(() => _expiresSeconds = p.Seconds)">@p.Label</span>
+                }
+            </RadzenStack>
+        </RadzenStack>
+
+        @if (_keyError is not null)
+        {
+            <RadzenText TextStyle="TextStyle.Caption" Style="color:var(--rz-danger)">@_keyError</RadzenText>
+        }
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
+            <RadzenButton Text="Generate" ButtonStyle="ButtonStyle.Primary"
+                          Disabled="@(!CanGenerate)" Click="GenerateUrl" />
+        </RadzenStack>
+    </RadzenStack>
+}
+else
+{
+    <RadzenStack Gap="1rem" Style="padding:0.25rem">
+        <RadzenAlert AlertStyle="AlertStyle.Warning" AllowClose="false" Style="margin:0">
+            Anyone with this link can upload to <strong>@_key</strong> — expires in @ExpiryLabel
+        </RadzenAlert>
+
+        <div style="background:var(--rz-base-background-color);border:1px solid var(--rz-border-disabled-color);
+                    border-radius:4px;padding:0.6rem 0.75rem;font-family:monospace;font-size:0.72rem;
+                    word-break:break-all;color:var(--rz-text-secondary-color);line-height:1.5">
+            @_url
+        </div>
+
+        <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+            <RadzenButton Text="Copy" Icon="content_copy" ButtonStyle="ButtonStyle.Primary" Click="CopyUrl" />
+            <RadzenButton Text="Done" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
+        </RadzenStack>
+    </RadzenStack>
+}
+
+<style>
+    .upload-chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 0.25rem 0.7rem;
+        border-radius: 9999px;
+        font-size: 0.8rem;
+        font-weight: 500;
+        cursor: pointer;
+        border: 1px solid var(--rz-border-disabled-color);
+        background: transparent;
+        color: var(--rz-text-secondary-color);
+        transition: background 0.15s, color 0.15s, border-color 0.15s;
+        user-select: none;
+    }
+    .upload-chip:hover { border-color: var(--rz-primary); color: var(--rz-primary); }
+    .upload-chip--active { background: var(--rz-primary); border-color: var(--rz-primary); color: #fff; }
+</style>
+
+@code {
+    [Parameter] public required string BucketName { get; set; }
+    [Parameter] public required string Prefix { get; set; }
+    [Parameter] public required string S3BaseUrl { get; set; }
+    [Parameter] public required string AccessKeyId { get; set; }
+    [Parameter] public required string SecretAccessKey { get; set; }
+    [Parameter] public int MaxSeconds { get; set; } = 604800;
+
+    record Preset(string Label, int Seconds);
+
+    static readonly List<Preset> _presets =
+    [
+        new("15 min",   900),
+        new("1 hour",  3600),
+        new("24 hours", 86400),
+        new("7 days",  604800),
+    ];
+
+    string _key = string.Empty;
+    int _expiresSeconds = 3600;
+    string? _keyError;
+    string? _url;
+
+    protected override void OnInitialized()
+    {
+        _key = Prefix;
+        _expiresSeconds = Math.Min(3600, MaxSeconds);
+    }
+
+    bool CanGenerate => !string.IsNullOrWhiteSpace(_key) && _keyError is null;
+
+    string ExpiryLabel => _presets.FirstOrDefault(p => p.Seconds == _expiresSeconds)?.Label
+        ?? (_expiresSeconds >= 86400 ? $"{_expiresSeconds / 86400} days"
+          : _expiresSeconds >= 3600  ? $"{_expiresSeconds / 3600} hours"
+          : $"{_expiresSeconds / 60} minutes");
+
+    void OnKeyInput(ChangeEventArgs e)
+    {
+        _key = e.Value?.ToString() ?? string.Empty;
+        ValidateKey();
+    }
+
+    void ValidateKey()
+    {
+        var k = _key.Trim();
+        if (string.IsNullOrEmpty(k)) { _keyError = "Key cannot be empty."; return; }
+        if (k.StartsWith('/'))       { _keyError = "Key must not start with '/'."; return; }
+        _keyError = null;
+    }
+
+    void GenerateUrl()
+    {
+        ValidateKey();
+        if (!CanGenerate) return;
+        _url = PresignedUrlGenerator.Generate(
+            S3BaseUrl, BucketName, _key.Trim(),
+            AccessKeyId, SecretAccessKey,
+            _expiresSeconds, "PUT");
+    }
+
+    async Task CopyUrl()
+    {
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _url!);
+    }
+
+    void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") DialogService.Close(null);
+        if (e.Key == "Enter" && CanGenerate && _url is null) GenerateUrl();
+    }
+}
