@@ -12,10 +12,10 @@
 
 ## Quick Start
 
-Docker image: [`meritonaliu/objex`](https://hub.docker.com/r/meritonaliu/objex)
+Docker image: [`ghcr.io/centrolabs/objex`](https://github.com/centrolabs/ObjeX/pkgs/container/objex)
 
 ```bash
-git clone https://github.com/youruser/ObjeX.git
+git clone https://github.com/centrolabs/ObjeX.git
 cd ObjeX/src/ObjeX.Api
 dotnet run
 ```
@@ -223,12 +223,12 @@ Build gate on push to `main` and all PRs — restore → build Release → fail 
 
 ### CD — `.github/workflows/cd.yml`
 
-On push to `main`: builds multi-arch image (amd64/arm64) and pushes to Docker Hub automatically.
+On push to `main`: builds multi-arch image (amd64/arm64) and pushes to GitHub Container Registry automatically.
 
-Published at [`meritonaliu/objex`](https://hub.docker.com/r/meritonaliu/objex):
+Published at [`ghcr.io/centrolabs/objex`](https://github.com/centrolabs/ObjeX/pkgs/container/objex):
 
 ```bash
-docker pull meritonaliu/objex:latest
+docker pull ghcr.io/centrolabs/objex:latest
 docker compose up -d
 ```
 

@@ -32,14 +32,14 @@
 
 ### CI/CD ✅
 - **CI** (`ci.yml`) — triggers on push to `main` and all PRs; runs on `ubuntu-latest`; restore → build Release; fails fast on compile errors; no tests yet
-- **CD** (`cd.yml`) — triggers on push to `main`; builds multi-arch image (amd64/arm64) and pushes to Docker Hub (`meritonaliu/objex:latest` + `meritonaliu/objex:<sha>`)
+- **CD** (`cd.yml`) — triggers on push to `main`; builds multi-arch image (amd64/arm64) and pushes to GitHub Container Registry (`ghcr.io/centrolabs/objex:latest` + `ghcr.io/centrolabs/objex:<tag>`)
 
 ### Dockerize ✅
 - Multi-stage Dockerfile (SDK build → ASP.NET runtime)
 - Multi-arch via `--platform=$BUILDPLATFORM` + `$TARGETARCH`
 - `docker-compose.yml` with named volume for `/data`
 - Environment variables for connection string and blob path baked into image defaults
-- Published to Docker Hub: `meritonaliu/objex:latest`
+- Published to GitHub Container Registry: `ghcr.io/centrolabs/objex:latest`
 
 ### Virtual Folder Navigation ✅
 - `ListObjectsResult` record in `ObjeX.Core/Models/` — `Objects` + `CommonPrefixes`

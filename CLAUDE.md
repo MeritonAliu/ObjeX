@@ -435,7 +435,7 @@ POST   /{bucket}/{*key}?uploadId=X → CompleteMultipartUpload; assembles parts,
 
 **`ci.yml`** — build gate, GitHub-hosted runner (`ubuntu-latest`). Triggers on push to `main` and all PRs. Steps: checkout → setup .NET (from `global.json`) → restore → build Release. No tests yet.
 
-**`cd.yml`** — triggers on push to `main`. Builds multi-arch image (amd64/arm64) via Buildx + QEMU and pushes to Docker Hub (`meritonaliu/objex:latest` + `meritonaliu/objex:<sha>`). Requires `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` repository secrets.
+**`cd.yml`** — triggers on push to `main`. Builds multi-arch image (amd64/arm64) via Buildx + QEMU and pushes to GitHub Container Registry (`ghcr.io/centrolabs/objex:latest` + `ghcr.io/centrolabs/objex:<tag>`). Uses `GITHUB_TOKEN` (automatic, no manual secrets needed).
 
 **`.github/dependabot.yml`** — weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, `serilog`, max 5 open) and GitHub Actions versions.
 
