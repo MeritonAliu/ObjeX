@@ -356,17 +356,8 @@ Keyboard handling: text-input dialogs (`CreateBucketDialog`, `CreateS3Credential
 ## Endpoint Routes
 
 ```
-# Buckets (require ApiPolicy) — port 9001
-GET    /api/buckets               → list buckets
-POST   /api/buckets?name={name}   → create bucket
-GET    /api/buckets/{name}        → get bucket
-DELETE /api/buckets/{name}        → delete bucket
-
-# Objects (require ApiPolicy) — port 9001
-PUT    /api/objects/{bucket}/{*key}          → upload object
-GET    /api/objects/{bucket}/{*key}          → download object
-DELETE /api/objects/{bucket}/{*key}          → delete object
-GET    /api/objects/{bucket}/                → list objects; accepts ?prefix=&delimiter= query params; returns { objects, commonPrefixes }
+# Internal endpoints — port 9001 (used by Blazor UI, cookie auth)
+GET    /api/objects/{bucket}/{*key}          → download object (browser file download)
 GET    /api/objects/{bucket}/download        → ZIP download; accepts ?prefix= to scope to a virtual folder
 
 # Auth (no auth required)

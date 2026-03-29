@@ -62,37 +62,19 @@ Point any S3-compatible client (AWS CLI, AWS SDKs, rclone, s3cmd, etc.) at `http
 
 All endpoints on port 9001 except `/account/*` and `/health/*` require a session cookie. Port 9000 (S3 API) requires AWS Signature V4.
 
-### Buckets — `/api/buckets`
+### Internal Endpoints — port `9001`
+
+Used by the Blazor UI. Bucket/object CRUD is handled entirely through the S3 API on port 9000 — the Blazor UI calls services directly via DI, so no REST endpoints are needed for those.
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/api/buckets` | List all buckets |
-| `POST` | `/api/buckets?name={name}` | Create a bucket |
-| `GET` | `/api/buckets/{name}` | Get bucket details |
-| `DELETE` | `/api/buckets/{name}` | Delete a bucket |
-
-Bucket name rules: 3–63 chars, lowercase alphanumeric and hyphens, no consecutive hyphens, cannot start/end with hyphen.
-
-### Objects — `/api/objects/{bucketName}`
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `PUT` | `/api/objects/{bucket}/{*key}` | Upload an object (streaming) |
-| `GET` | `/api/objects/{bucket}/{*key}` | Download an object |
-| `DELETE` | `/api/objects/{bucket}/{*key}` | Delete an object |
-| `GET` | `/api/objects/{bucket}/` | List objects — accepts `?prefix=&delimiter=`; returns `{ objects, commonPrefixes }` |
+| `GET` | `/api/objects/{bucket}/{*key}` | Download an object (browser file download) |
 | `GET` | `/api/objects/{bucket}/download` | Download objects as ZIP — accepts `?prefix=` to scope to a folder |
-
-Object keys support slashes (virtual folders): `PUT /api/objects/my-bucket/images/photo.jpg`
-
-**Key validation:** keys are rejected with `400` if they are empty, exceed 1024 characters, start with `/`, or contain control characters (including null bytes). `..` segments and `\` are normalised on the storage path but the original key is stored as-is.
-
-**Overwrite semantics:** `PUT` to an existing key silently overwrites — last write wins. The old blob becomes an orphan and is cleaned up by the weekly GC job. Safe to retry on network failure.
-
-Upload response:
-```json
-{ "key": "hello.txt", "etag": "a1b2c3...", "size": 13 }
-```
+| `GET` | `/api/presign/{bucket}/{*key}` | Generate a presigned URL — accepts `?expires=N` (seconds) |
+| `POST` | `/account/login` | Form login (sets cookie), redirects to `returnUrl` |
+| `GET` | `/account/logout` | Clears cookie, redirects to `/login` |
+| `GET` | `/health` | Liveness check (200 if process is up) |
+| `GET` | `/health/ready` | Readiness check (DB connectivity + blob storage writability) |
 
 ### S3-Compatible API — port `9000`
 
