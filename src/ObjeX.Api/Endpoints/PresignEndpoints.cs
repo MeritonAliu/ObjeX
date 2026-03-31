@@ -14,7 +14,7 @@ public static class PresignEndpoints
     {
         app.MapGet("/api/presign/{bucket}/{*key}", async (
             string bucket, string key,
-            int? expires,
+            int? expires, string? method,
             HttpContext ctx,
             ObjeXDbContext db,
             IMetadataService metadata,
@@ -38,10 +38,16 @@ public static class PresignEndpoints
             var expiresSeconds = Math.Clamp(expires ?? defaultExpiry, 1, maxExpiry);
             var s3BaseUrl = config["S3:PublicUrl"] ?? "http://localhost:9000";
 
+            var httpMethod = method?.ToUpperInvariant() switch
+            {
+                "PUT" => "PUT",
+                _ => "GET"
+            };
+
             var url = PresignedUrlGenerator.Generate(
                 s3BaseUrl, bucket, key,
                 credential.AccessKeyId, credential.SecretAccessKey,
-                expiresSeconds);
+                expiresSeconds, method: httpMethod);
 
             return Results.Ok(new { url });
         }).RequireAuthorization();
