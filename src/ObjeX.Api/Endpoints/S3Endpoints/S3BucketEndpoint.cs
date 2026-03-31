@@ -1,7 +1,10 @@
 using System.Security.Claims;
 
+using Microsoft.EntityFrameworkCore;
+
 using ObjeX.Api.S3;
 using ObjeX.Core.Interfaces;
+using ObjeX.Infrastructure.Data;
 
 namespace ObjeX.Api.Endpoints.S3Endpoints;
 
@@ -56,7 +59,7 @@ public static class S3BucketEndpoint
             return Results.StatusCode(204);
         });
 
-        s3.MapGet("/{bucket}", async (string bucket, string? prefix, string? delimiter, HttpRequest request, HttpContext ctx, IMetadataService metadata) =>
+        s3.MapGet("/{bucket}", async (string bucket, string? prefix, string? delimiter, HttpRequest request, HttpContext ctx, IMetadataService metadata, ObjeXDbContext db) =>
         {
             var b = await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx));
             if (b is null)
@@ -64,6 +67,15 @@ public static class S3BucketEndpoint
 
             if (request.Query.ContainsKey("location"))
                 return S3Xml.BucketLocation();
+
+            if (request.Query.ContainsKey("uploads"))
+            {
+                var uploads = await db.MultipartUploads
+                    .Where(u => u.BucketName == bucket)
+                    .OrderByDescending(u => u.CreatedAt)
+                    .ToListAsync();
+                return S3Xml.ListMultipartUploads(bucket, uploads);
+            }
 
             var result = await metadata.ListObjectsAsync(bucket, prefix, delimiter);
 

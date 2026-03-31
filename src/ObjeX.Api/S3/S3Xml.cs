@@ -151,6 +151,25 @@ public static class S3Xml
         return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
     }
 
+    public static IResult ListMultipartUploads(string bucket, IEnumerable<MultipartUpload> uploads)
+    {
+        var xml = new StringBuilder();
+        xml.AppendLine("<?xml version=\"1.0\" encoding=\"UTF-8\"?>");
+        xml.AppendLine("<ListMultipartUploadsResult xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">");
+        xml.AppendLine($"  <Bucket>{Escape(bucket)}</Bucket>");
+        xml.AppendLine("  <IsTruncated>false</IsTruncated>");
+        foreach (var upload in uploads)
+        {
+            xml.AppendLine("  <Upload>");
+            xml.AppendLine($"    <Key>{Escape(upload.Key)}</Key>");
+            xml.AppendLine($"    <UploadId>{upload.Id}</UploadId>");
+            xml.AppendLine($"    <Initiated>{upload.CreatedAt:yyyy-MM-ddTHH:mm:ss.fffZ}</Initiated>");
+            xml.AppendLine("  </Upload>");
+        }
+        xml.AppendLine("</ListMultipartUploadsResult>");
+        return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
+    }
+
     public static IResult CopyObjectResult(string etag, DateTime lastModified)
     {
         var xml = new StringBuilder();
