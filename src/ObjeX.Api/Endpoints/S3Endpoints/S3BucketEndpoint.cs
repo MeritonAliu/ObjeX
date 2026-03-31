@@ -62,6 +62,9 @@ public static class S3BucketEndpoint
             if (b is null)
                 return S3Xml.Error(S3Errors.NoSuchBucket, "The specified bucket does not exist.", 404);
 
+            if (request.Query.ContainsKey("location"))
+                return S3Xml.BucketLocation();
+
             var result = await metadata.ListObjectsAsync(bucket, prefix, delimiter);
 
             if (request.Query["list-type"] == "2")

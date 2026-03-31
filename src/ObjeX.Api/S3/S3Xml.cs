@@ -151,6 +151,13 @@ public static class S3Xml
         return Results.Content(xml.ToString(), "application/xml", Encoding.UTF8);
     }
 
+    public static IResult BucketLocation()
+    {
+        return Results.Content(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<LocationConstraint xmlns=\"http://s3.amazonaws.com/doc/2006-03-01/\">us-east-1</LocationConstraint>",
+            "application/xml", Encoding.UTF8);
+    }
+
     public static IResult DeleteResult(List<string> deleted, List<(string Key, string Code, string Message)> errors)
     {
         var xml = new StringBuilder();
