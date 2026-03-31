@@ -41,6 +41,9 @@ Open **http://localhost:9001** — log in with `admin` / `admin`.
 > ⚠️ Change the default admin credentials before exposing the instance publicly. Set `DefaultAdmin:Username`, `DefaultAdmin:Email`, and `DefaultAdmin:Password` in `appsettings.json` or environment variables.
 
 ---
+<img width="800" height="496" alt="grafik" src="https://github.com/user-attachments/assets/8cadcd71-de33-4554-a5a0-320362b35e68" />
+
+---
 
 ## Authentication
 
@@ -175,37 +178,11 @@ ObjeX can pre-create buckets and an S3 credential on startup so integrations wor
 | S3 secret key | `Seed__S3Credential__SecretAccessKey` | You choose the secret |
 | S3 credential name | `Seed__S3Credential__Name` | Display name (default: `seed-credential`) |
 
-### Database
+### Security
 
-SQLite by default — zero config, no separate process. Future versions will support plugging in your own database (PostgreSQL, etc.) via the compose file.
+See [SECURITY.md](SECURITY.md) for vulnerability reporting and encryption guidance.
 
-If you're hitting SQLite limits: [sqlite.org/limits.html](https://sqlite.org/limits.html) · [WAL mode](https://sqlite.org/wal.html) · [when to use SQLite](https://sqlite.org/whentouse.html)
-
-### Encryption
-
-ObjeX does not encrypt blobs or metadata at the application level. For data at rest, rely on full-disk encryption at the host (e.g. LUKS, BitLocker, or encrypted cloud volumes). For data in transit, run ObjeX behind a TLS-terminating reverse proxy (nginx, Caddy, Traefik).
-
-### HTTP Security Headers
-
-ObjeX sets the following headers on every response:
-
-| Header | Value |
-|--------|-------|
-| `Server` | *(removed — Kestrel default suppressed via `AddServerHeader = false`)* |
-| `X-Powered-By` | *(removed)* |
-| `X-Content-Type-Options` | `nosniff` |
-| `X-Frame-Options` | `DENY` |
-| `X-Permitted-Cross-Domain-Policies` | `none` |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains` (non-dev only) |
-
-**Hangfire dashboard** (`/hangfire`) is publicly routable but protected by Admin role (localhost bypasses auth for dev convenience). The dashboard exposes job history, parameters, and retry controls — sufficient for a self-hosted admin tool. If you want to restrict it further (e.g. internal network only), block it at the reverse proxy: `location /hangfire { deny all; }`. ObjeX's current jobs carry no sensitive parameters; take care if you add jobs that do.
-
-Content Security Policy (CSP) is not yet set — Blazor Server requires inline scripts and a `ws://` WebSocket connection for SignalR, making a safe policy non-trivial. Deferred to a future hardening pass.
-
-**Rate limiting:** `POST /account/login` is limited to 5 attempts per 2 minutes per IP (sliding window) — returns 429 when exceeded. `POST /api/keys` is limited to 10 per minute per IP. Rate limiting is IP-based via `RemoteIpAddress` — if you run ObjeX behind a reverse proxy, ensure `X-Forwarded-For` is correctly forwarded, otherwise the limiter sees the proxy IP and may block all users simultaneously.
-
-**CORS:** ObjeX allows any origin (`AllowAnyOrigin`). This is intentional for self-hosted use where the origin isn't known upfront. Browsers block `AllowAnyOrigin` + `AllowCredentials` simultaneously, so cookie sessions are safe. If you add `AllowCredentials()` in the future, you must also restrict to explicit origins — the wildcard + credentials combination is rejected by browsers and would need to be replaced.
+Login rate-limited to 5 attempts per 2 minutes per IP. Hangfire dashboard restricted to Admin role. Security headers set on all responses (`X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, `HSTS`).
 
 ### Blob Layout on Disk
 
@@ -284,6 +261,12 @@ Weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, 
 - Auth boundary tests (no key, expired key, wrong key, valid cookie vs API key)
 - Path traversal fuzzing on object keys
 - Fault injection: disk full simulation, corrupted blob detection
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ---
 
