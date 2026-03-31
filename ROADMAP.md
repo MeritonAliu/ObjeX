@@ -99,6 +99,7 @@
 - [ ] POST Object: `${filename}` variable substitution in key — deferred (no modern SDK uses this)
 - [ ] POST Object: `success_action_redirect` / `success_action_status` — deferred (all SDKs use default 204)
 - [x] `x-amz-meta-*` custom metadata — stored as JSON on BlobObject, returned on GET/HEAD, captured on PUT/POST Object
+- [x] CopyObject — `PUT /{bucket}/{*key}` with `x-amz-copy-source` header; copies blob + metadata server-side
 
 ### 3. Multipart Upload ✅
 - [x] `POST /{bucket}/{key}?uploads` — InitiateMultipartUpload

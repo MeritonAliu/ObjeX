@@ -104,6 +104,48 @@ public static class S3ObjectEndpoint
                 return Results.StatusCode(200);
             }
 
+            // CopyObject: PUT /{bucket}/{*key} with x-amz-copy-source header
+            var copySource = request.Headers["x-amz-copy-source"].ToString();
+            if (!string.IsNullOrEmpty(copySource))
+            {
+                var decoded = Uri.UnescapeDataString(copySource).TrimStart('/');
+                var slashIdx = decoded.IndexOf('/');
+                if (slashIdx < 1)
+                    return S3Xml.Error(S3Errors.InvalidArgument, "Invalid x-amz-copy-source format.");
+
+                var srcBucket = decoded[..slashIdx];
+                var srcKey = decoded[(slashIdx + 1)..];
+
+                if (await metadata.GetBucketAsync(srcBucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
+                    return S3Xml.Error(S3Errors.NoSuchBucket, $"Source bucket '{srcBucket}' does not exist.", 404);
+
+                var srcObj = await metadata.GetObjectAsync(srcBucket, srcKey);
+                if (srcObj is null)
+                    return S3Xml.Error(S3Errors.NoSuchKey, "The specified source key does not exist.", 404);
+
+                if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
+                    return S3Xml.Error(S3Errors.NoSuchBucket, "The destination bucket does not exist.", 404);
+
+                var srcStream = await storage.RetrieveAsync(srcBucket, srcKey);
+                await using var copyHashStream = new HashingStream(srcStream);
+                var destPath = await storage.StoreAsync(bucket, key, copyHashStream);
+                var destSize = await storage.GetSizeAsync(bucket, key);
+                var destEtag = copyHashStream.GetETag();
+
+                await metadata.SaveObjectAsync(new BlobObject
+                {
+                    BucketName = bucket,
+                    Key = key,
+                    Size = destSize,
+                    ContentType = srcObj.ContentType,
+                    ETag = destEtag,
+                    StoragePath = destPath,
+                    CustomMetadata = srcObj.CustomMetadata
+                });
+
+                return S3Xml.CopyObjectResult(destEtag, DateTime.UtcNow);
+            }
+
             if (ObjectKeyValidator.GetValidationError(key) is { } keyError)
                 return S3Xml.Error(S3Errors.InvalidArgument, keyError);
 
