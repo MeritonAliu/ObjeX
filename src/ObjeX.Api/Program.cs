@@ -19,6 +19,7 @@ using ObjeX.Api.Endpoints.S3Endpoints;
 using ObjeX.Api.Middleware;
 using ObjeX.Core.Models;
 
+using Prometheus;
 using Radzen;
 using Serilog;
 
@@ -132,6 +133,8 @@ builder.Services.AddHangfire(config => config
     .UseRecommendedSerializerSettings()
     .UseSQLiteStorage(dbFilePath));
 builder.Services.AddHangfireServer();
+if (builder.Configuration.GetValue<bool>("Metrics:Enabled"))
+    builder.Services.AddHostedService<ObjeX.Api.Metrics.BucketMetricsSyncJob>();
 builder.Services.AddScoped<CleanupOrphanedBlobsJob>();
 builder.Services.AddScoped<VerifyBlobIntegrityJob>();
 builder.Services.AddScoped<CleanupAbandonedMultipartJob>();
@@ -293,6 +296,12 @@ using (var scope = app.Services.CreateScope())
             }
         }
     }
+
+    if (builder.Configuration.GetValue<bool>("Metrics:Enabled"))
+    {
+        foreach (var bucket in await db.Buckets.ToListAsync())
+            ObjeX.Api.Metrics.ObjeXMetrics.SetBucketStats(bucket.Name, bucket.TotalSize, bucket.ObjectCount);
+    }
 }
 
 app.UseWhen(
@@ -336,6 +345,9 @@ else
     });
 }
 app.UseSerilogRequestLogging();
+var metricsEnabled = builder.Configuration.GetValue<bool>("Metrics:Enabled");
+if (metricsEnabled)
+    app.UseHttpMetrics();
 app.UseResponseCompression();
 
 app.UseHangfireDashboard("/hangfire", new DashboardOptions
@@ -358,6 +370,8 @@ RecurringJob.AddOrUpdate<CleanupAbandonedMultipartJob>(
     job => job.ExecuteAsync(),
     Cron.Weekly(DayOfWeek.Sunday, 5)); // weekly Sunday 05:00 UTC
 
+if (metricsEnabled)
+    app.MapMetrics("/metrics");
 app.MapHealthChecks("/health");
 app.MapHealthChecks("/health/live");
 app.MapHealthChecks("/health/ready", new Microsoft.AspNetCore.Diagnostics.HealthChecks.HealthCheckOptions

@@ -77,6 +77,7 @@ Used by the Blazor UI. Bucket/object CRUD is handled entirely through the S3 API
 | `GET` | `/account/logout` | Clears cookie, redirects to `/login` |
 | `GET` | `/health` | Liveness check (200 if process is up) |
 | `GET` | `/health/ready` | Readiness check (DB connectivity + blob storage writability) |
+| `GET` | `/metrics` | Prometheus metrics (HTTP stats + per-bucket storage gauges); requires `Metrics:Enabled=true` |
 
 ### S3-Compatible API — port `9000`
 
@@ -124,6 +125,7 @@ No config required for local dev. Defaults (from `appsettings.json`):
 | Presigned URL max expiry | `604800` seconds (7 days) — configurable in **Settings → Presigned URLs**; hard cap enforced server-side |
 | Storage quota (global default) | unlimited — configurable in **Settings → Storage Quotas**; applies to User role only; Admin/Manager unlimited by default |
 | Storage quota (per-user) | unlimited — override per user on **Users** page; applies to any role when explicitly set |
+| Prometheus metrics | `false` — set `Metrics:Enabled=true` to expose `/metrics` on port 9001 |
 | Admin username | `admin` |
 | Admin email | `admin@objex.local` |
 | Admin password | `admin` |

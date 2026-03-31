@@ -382,7 +382,7 @@ GET    /account/logout    → clears cookie, redirects to /login
 # System
 GET    /health            → liveness (200 if process is up, no checks); also at /health/live
 GET    /health/ready      → readiness (checks DB connectivity + blob storage writability)
-GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
+GET    /metrics           → Prometheus metrics (HTTP request stats + per-bucket storage gauges, synced every 30s)
 GET    /hangfire          → Hangfire dashboard (Admin role or localhost)
 
 # S3-Compatible API — port 9000 (AWS Signature V4 required)

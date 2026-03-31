@@ -13,6 +13,7 @@ services:
       Seed__S3Credential__Name: ${SEED_S3_NAME:-}                       # e.g. my-app
       Seed__S3Credential__AccessKeyId: ${SEED_S3_ACCESS_KEY:-}          # e.g. OBXMYACCESSKEY123456
       Seed__S3Credential__SecretAccessKey: ${SEED_S3_SECRET:-}          # e.g. use a strong secret
+      Metrics__Enabled: ${METRICS_ENABLED:-false}                        # enable /metrics endpoint for Prometheus
     restart: unless-stopped
 
 volumes:
