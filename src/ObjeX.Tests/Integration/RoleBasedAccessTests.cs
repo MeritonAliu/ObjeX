@@ -54,11 +54,8 @@ public class RoleBasedAccessTests(ObjeXFactory factory) : IClassFixture<ObjeXFac
     }
 
     [Fact]
-    public async Task AdminViaS3_SeesOnlyOwnBuckets()
+    public async Task AdminViaS3_SeesAllBuckets()
     {
-        // SigV4 auth doesn't include role claims, so IsPrivileged() returns false
-        // even for admin. Via S3 API, all users see only their own buckets.
-        // (Admin sees all only via Blazor UI where cookie auth includes roles.)
         var (userId, _, _) = await CreateUserWithCredential("iso-user-c");
         var userBucket = "iso-user-c-bucketxx";
 
@@ -72,14 +69,14 @@ public class RoleBasedAccessTests(ObjeXFactory factory) : IClassFixture<ObjeXFac
             }
         }
 
-        // Admin via S3 sees own buckets (test-bucket) but NOT other users' buckets
+        // Admin via S3 now sees all buckets (role claims added to SigV4 identity)
         var listRequest = new HttpRequestMessage(HttpMethod.Get, "/");
         S3RequestSigner.SignRequest(listRequest, factory.AccessKeyId, factory.SecretAccessKey);
         var listResponse = await _client.SendAsync(listRequest);
         var xml = await listResponse.Content.ReadAsStringAsync();
 
-        Assert.Contains("test-bucket", xml); // admin's own
-        Assert.DoesNotContain(userBucket, xml); // not visible via S3
+        Assert.Contains("test-bucket", xml);
+        Assert.Contains(userBucket, xml);
     }
 
     private async Task<(string UserId, string AccessKeyId, string SecretKey)> CreateUserWithCredential(string username)

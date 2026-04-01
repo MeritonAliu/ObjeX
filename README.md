@@ -231,7 +231,7 @@ Weekly Monday PRs for NuGet packages (grouped: `radzen`, `ef-core`, `hangfire`, 
 
 ## Testing
 
-108 automated tests (xUnit, ~5 seconds). Integration tests use real SQLite via `WebApplicationFactory` — no mocks.
+111 automated tests (xUnit, ~5 seconds). Integration tests use real SQLite via `WebApplicationFactory` — no mocks.
 
 ```bash
 dotnet test src/ObjeX.Tests/
@@ -250,7 +250,7 @@ dotnet test src/ObjeX.Tests/
 - Audit log — bucket and object mutations write entries
 - Batch delete — multiple keys, mixed existing/non-existent
 - CopyObject — within bucket, cross-bucket, non-existent source
-- Role isolation — User sees only own buckets via S3 API
+- Role isolation — User sees only own buckets; Admin/Manager see all (via S3 API and Blazor)
 - Cookie auth — login, bad password redirect, logout
 - Health endpoints — liveness, readiness
 - Security headers — X-Content-Type-Options, X-Frame-Options, Referrer-Policy, no Server header

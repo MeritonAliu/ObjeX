@@ -49,9 +49,9 @@ public class ResilienceTests(ObjeXFactory factory) : IClassFixture<ObjeXFactory>
         var key = "concurrent-" + Guid.NewGuid().ToString("N")[..6] + ".bin";
 
         // Launch multiple uploads to the same key concurrently.
-        // Some may fail due to .tmp file race (known limitation — concurrent writes
-        // to the same hashed path collide on the temp file). The important assertion
-        // is that the final state is consistent: download returns valid content.
+        // Unique .tmp files prevent filesystem collisions, but SQLite upserts on
+        // the same (BucketName, Key) unique index can still race. That's expected
+        // under concurrent writes — the important thing is final state consistency.
         var tasks = Enumerable.Range(0, 5).Select(async i =>
         {
             var content = new byte[4096];
@@ -61,14 +61,13 @@ public class ResilienceTests(ObjeXFactory factory) : IClassFixture<ObjeXFactory>
             var request = new HttpRequestMessage(HttpMethod.Put, $"/{bucket}/{key}");
             request.Content = new ByteArrayContent(content);
             S3RequestSigner.SignRequest(request, factory.AccessKeyId, factory.SecretAccessKey, content);
-            try { return await _client.SendAsync(request); }
-            catch { return null; } // some may throw due to concurrent I/O
+            return await _client.SendAsync(request);
         }).ToArray();
 
-        await Task.WhenAll(tasks);
+        var responses = await Task.WhenAll(tasks);
 
-        // At least one upload should have succeeded
-        var succeeded = tasks.Count(t => t.Result?.StatusCode == HttpStatusCode.Created);
+        // At least one must succeed; some may 500 due to DB concurrency
+        var succeeded = responses.Count(r => r.StatusCode == HttpStatusCode.Created);
         Assert.True(succeeded >= 1, "At least one concurrent upload should succeed");
 
         // Final state must be consistent: download returns one coherent upload

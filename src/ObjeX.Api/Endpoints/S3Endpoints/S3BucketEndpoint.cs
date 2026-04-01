@@ -41,6 +41,10 @@ public static class S3BucketEndpoint
             {
                 return S3Xml.Error(S3Errors.InvalidBucketName, ex.Message);
             }
+            catch (InvalidOperationException)
+            {
+                return S3Xml.Error(S3Errors.BucketAlreadyExists, $"The bucket '{bucket}' already exists.", 409);
+            }
         });
 
         s3.MapDelete("/{bucket}", async (string bucket, HttpContext ctx, IMetadataService metadata) =>

@@ -1,4 +1,3 @@
-using Hangfire;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -33,7 +32,7 @@ public class ObjeXFactory : WebApplicationFactory<ApiAssemblyMarker>
         builder.UseSetting("Seed:S3Credential:SecretAccessKey", SecretAccessKey);
         builder.UseSetting("Seed:S3Credential:Name", "test-credential");
         builder.UseSetting("Seed:Buckets", "test-bucket");
-        builder.UseSetting("Serilog:MinimumLevel:Default", "Warning");
+        builder.UseSetting("Serilog:MinimumLevel:Default", "Fatal");
 
         builder.ConfigureServices(services =>
         {

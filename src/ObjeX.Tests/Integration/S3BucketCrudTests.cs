@@ -58,8 +58,9 @@ public class S3BucketCrudTests(ObjeXFactory factory) : IClassFixture<ObjeXFactor
         var put2 = new HttpRequestMessage(HttpMethod.Put, $"/{bucket}");
         S3RequestSigner.SignRequest(put2, factory.AccessKeyId, factory.SecretAccessKey);
         var response2 = await _client.SendAsync(put2);
-        // Duplicate bucket throws InvalidOperationException (not caught by endpoint) → 500
-        Assert.NotEqual(HttpStatusCode.OK, response2.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, response2.StatusCode);
+        var body = await response2.Content.ReadAsStringAsync();
+        Assert.Contains("BucketAlreadyExists", body);
 
         // Cleanup
         var del = new HttpRequestMessage(HttpMethod.Delete, $"/{bucket}");

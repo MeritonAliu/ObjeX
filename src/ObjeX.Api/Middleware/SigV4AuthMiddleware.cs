@@ -1,7 +1,9 @@
 using System.Security.Cryptography;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using ObjeX.Api.S3;
+using ObjeX.Core.Models;
 using ObjeX.Infrastructure.Data;
 
 namespace ObjeX.Api.Middleware;
@@ -95,7 +97,7 @@ public class SigV4AuthMiddleware(RequestDelegate next, ILogger<SigV4AuthMiddlewa
             return;
         }
 
-        SetUserContext(context, credential);
+        await SetUserContextAsync(context, credential);
         _ = UpdateLastUsedAsync(db, credential.Id, context.RequestAborted);
 
         await next(context);
@@ -158,20 +160,31 @@ public class SigV4AuthMiddleware(RequestDelegate next, ILogger<SigV4AuthMiddlewa
             return;
         }
 
-        SetUserContext(context, credential);
+        await SetUserContextAsync(context, credential);
         _ = UpdateLastUsedAsync(db, credential.Id, context.RequestAborted);
 
         await next(context);
     }
 
-    private static void SetUserContext(HttpContext context, ObjeX.Core.Models.S3Credential credential)
+    private static async Task SetUserContextAsync(HttpContext context, ObjeX.Core.Models.S3Credential credential)
     {
-        var claims = new[]
+        var claims = new List<Claim>
         {
-            new Claim(ClaimTypes.NameIdentifier, credential.UserId),
-            new Claim("s3_credential_id", credential.Id.ToString()),
-            new Claim("access_key_id", credential.AccessKeyId),
+            new(ClaimTypes.NameIdentifier, credential.UserId),
+            new("s3_credential_id", credential.Id.ToString()),
+            new("access_key_id", credential.AccessKeyId),
         };
+
+        // Add role claims so IsInRole() works for Admin/Manager privilege checks
+        var userManager = context.RequestServices.GetRequiredService<UserManager<User>>();
+        var user = await userManager.FindByIdAsync(credential.UserId);
+        if (user is not null)
+        {
+            var roles = await userManager.GetRolesAsync(user);
+            foreach (var role in roles)
+                claims.Add(new Claim(ClaimTypes.Role, role));
+        }
+
         context.User = new ClaimsPrincipal(new ClaimsIdentity(claims, "SigV4"));
     }
 

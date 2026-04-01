@@ -77,7 +77,7 @@ public class FileSystemStorageService : IObjectStorageService
     public async Task<string> StoreAsync(string bucketName, string key, Stream data, CancellationToken ctk = default)
     {
         var filePath = AssertWithinBasePath(GetSafePath(bucketName, key));
-        var tmpPath = filePath + ".tmp";
+        var tmpPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!);
 
         try
@@ -162,7 +162,7 @@ public class FileSystemStorageService : IObjectStorageService
         string bucketName, string key, IEnumerable<string> orderedPartPaths, CancellationToken ctk = default)
     {
         var filePath = AssertWithinBasePath(GetSafePath(bucketName, key)); // codeql[cs/path-injection]
-        var tmpPath = filePath + ".tmp";
+        var tmpPath = $"{filePath}.{Guid.NewGuid():N}.tmp";
         Directory.CreateDirectory(Path.GetDirectoryName(filePath)!); // codeql[cs/path-injection]
 
         try

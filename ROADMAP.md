@@ -142,7 +142,7 @@
 - [x] Bulk select — checkbox column, bulk delete + ZIP download, action bar
 - [x] File metadata viewer — info button opens dialog with key, content-type, size, ETag, uploaded, last modified
 - [x] Storage analytics charts — per-bucket breakdown: storage donut, objects column, file types donut (top-N limits, custom tooltips)
-- [x] Automated test suite — 108 xUnit tests (unit + integration via `WebApplicationFactory`, real SQLite, no mocks); S3 CRUD, multipart, auth boundaries, path traversal, quotas, audit, copy, batch delete, resilience, cookie auth, health checks, security headers
+- [x] Automated test suite — 111 xUnit tests (unit + integration via `WebApplicationFactory`, real SQLite, no mocks); S3 CRUD, multipart, auth boundaries, path traversal, quotas, audit, copy, batch delete, resilience, cookie auth, health checks, security headers
 
 ---
 

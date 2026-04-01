@@ -23,10 +23,10 @@ public static partial class BucketNameValidator
         if (name.Length > 63)
             return "Bucket name must not exceed 63 characters";
         
-        if (!char.IsLower(name[0]) || !char.IsLetterOrDigit(name[0]))
+        if (!(char.IsLower(name[0]) || char.IsAsciiDigit(name[0])))
             return "Bucket name must start with a lowercase letter or number";
-        
-        if (!char.IsLower(name[^1]) || !char.IsLetterOrDigit(name[^1]))
+
+        if (!(char.IsLower(name[^1]) || char.IsAsciiDigit(name[^1])))
             return "Bucket name must end with a lowercase letter or number";
         
         if (name.Contains(".."))

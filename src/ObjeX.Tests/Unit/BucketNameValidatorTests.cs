@@ -9,6 +9,9 @@ public class BucketNameValidatorTests
     [InlineData("my-bucket")]
     [InlineData("a-b")]
     [InlineData("bucket-abc")]
+    [InlineData("a23")]
+    [InlineData("bucket-with-numbers-123")]
+    [InlineData("9apps")]
     public void Valid_Names_Return_Null(string name)
     {
         Assert.Null(BucketNameValidator.GetValidationError(name));
