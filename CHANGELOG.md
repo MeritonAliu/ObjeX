@@ -4,8 +4,9 @@ All notable changes to ObjeX are documented here.
 
 ---
 
-## Unreleased
+## v1.0.0 — 2026-04-01
 
+### Added
 - PostgreSQL as opt-in database backend (`DATABASE_PROVIDER=postgresql`)
 - Audit log — records bucket/object operations with user, action, timestamp; Admin-only UI at `/audit`
 - Prometheus `/metrics` endpoint with per-bucket storage gauges
@@ -15,10 +16,10 @@ All notable changes to ObjeX are documented here.
 - Automated test suite — 113 xUnit tests (unit + integration), CI runs tests on every push and PR
 
 ### Fixed
-- BucketNameValidator rejected bucket names starting/ending with digits (`char.IsLower` → `char.IsLower || char.IsAsciiDigit`)
+- BucketNameValidator rejected bucket names starting/ending with digits
 - Duplicate bucket creation returned 500 instead of S3-standard 409 `BucketAlreadyExists`
-- SigV4 auth missing role claims — Admin/Manager privileges now enforced via S3 API (not just Blazor)
-- Concurrent uploads to same key could fail with IOException due to `.tmp` file collision (now uses unique temp filenames)
+- SigV4 auth missing role claims — Admin/Manager privileges now enforced via S3 API
+- Concurrent uploads to same key could fail with IOException due to `.tmp` file collision
 
 ## v0.2.0 — 2026-03-31
 
