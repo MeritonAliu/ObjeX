@@ -151,8 +151,10 @@
     static string GeneratePassword()
     {
         const string chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-        var length = Random.Shared.Next(8, 13);
-        return new string(Enumerable.Range(0, length).Select(_ => chars[Random.Shared.Next(chars.Length)]).ToArray());
+        var length = System.Security.Cryptography.RandomNumberGenerator.GetInt32(8, 13);
+        return new string(Enumerable.Range(0, length)
+            .Select(_ => chars[System.Security.Cryptography.RandomNumberGenerator.GetInt32(chars.Length)])
+            .ToArray());
     }
 
     async Task CreateUser()
