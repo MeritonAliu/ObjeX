@@ -424,6 +424,7 @@
 
         try
         {
+            await StorageService.DeleteAsync(BucketName, obj.Key);
             await MetadataService.DeleteObjectAsync(BucketName, obj.Key, _currentUserId);
             await LoadObjects();
             NotificationService.Notify(NotificationSeverity.Success, "Object deleted", obj.Key);
@@ -460,6 +461,7 @@
                 }
                 else
                 {
+                    await StorageService.DeleteAsync(BucketName, row.Object!.Key);
                     await MetadataService.DeleteObjectAsync(BucketName, row.Object!.Key, _currentUserId);
                 }
             }
