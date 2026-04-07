@@ -190,7 +190,7 @@ builder.Services.AddCascadingAuthenticationState();
 
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy =>
+    options.AddPolicy("S3", policy =>
     {
         policy.AllowAnyOrigin()
             .AllowAnyMethod()
@@ -355,7 +355,9 @@ app.UseWhen(
     ctx => !ctx.Request.Path.StartsWithSegments("/api"),
     branch => branch.UseStatusCodePagesWithRedirects("/not-found"));
 app.UseStaticFiles();
-app.UseCors();
+app.UseWhen(
+    ctx => ctx.Connection.LocalPort == 9000,
+    branch => branch.UseCors("S3"));
 app.UseRateLimiter();
 app.Use(async (ctx, next) =>
 {
