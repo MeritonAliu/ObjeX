@@ -147,7 +147,7 @@
 
 ---
 
-## v2 — Search, Tags & Permissions
+## v2 — Search, Tags & Lifecycle
 
 ### Object Metadata & Tags
 - Key-value tags per object (stored in DB)
@@ -155,6 +155,11 @@
 - Tag management UI
 - Lifecycle policies based on tags (e.g. auto-delete after X days)
 - Retention policy enforcement
+
+### Soft Delete
+- Tombstone objects instead of hard-deleting, TTL-based purge
+- Pairs naturally with lifecycle policies and tag-based retention
+- Recoverable deletes via UI or API within retention window
 
 ### Advanced Search
 - Full-text filename search
@@ -169,6 +174,22 @@
 - Permission management UI (admin)
 - Permission checks enforced in all API endpoints
 
+### Webhook Notifications
+- POST to configured URL on bucket/object mutations (upload, delete, create bucket)
+- Global webhook URL in Settings UI
+- JSON payload with action, bucket, key, user, timestamp
+- Alert on quota exceeded, integrity failures
+
+### CLI Tool
+- `objex` CLI — manage buckets, upload/download, admin ops
+- Could wrap the S3 API or add a dedicated management API
+- Complements the Blazor UI for scripting and automation
+
+### Benchmark Suite
+- Performance test suite — throughput, latency, concurrency
+- Useful baseline for validating future optimizations
+- Compare SQLite vs PostgreSQL, single vs multi-file workloads
+
 ### Extended Test Coverage
 - PostgreSQL integration tests (currently SQLite-only)
 - Large file streaming (500MB+) under memory pressure
@@ -177,14 +198,9 @@
 - Hangfire job verification (orphan cleanup, integrity check)
 - Backup/restore end-to-end drill
 
-### ETag Verification on Read
-- **v1** — weekly job covers it (already exists); opt-in `x-objex-verify-integrity: true` header for per-request verification (done)
-- **v2** — streaming MD5 passthrough on all reads, log mismatches silently, expose corruption counters on `/health/integrity`
-
-### Webhook Notifications
-- POST to configured URL on bucket/object mutations (upload, delete, create bucket)
-- Global webhook URL in Settings UI
-- JSON payload with action, bucket, key, user, timestamp
+### ETag Verification on Read (v2)
+- Streaming MD5 passthrough on all reads, log mismatches silently
+- Expose corruption counters on `/health/integrity`
 
 ### S3 Conformance Badge
 - Run Ceph s3-tests or mint test suite, publish pass rate
@@ -195,7 +211,7 @@
 
 ---
 
-## v3 — Multi-Tenant & Enterprise
+## v3 — Multi-Tenant, Enterprise & Hardening
 
 ### Teams & Organizations
 - Multi-tenant support with organization workspaces
@@ -209,14 +225,37 @@
 - "Login with GitHub" for teams
 - Auth pipeline integration
 
+### Object Versioning
+- Object version history, keep N prior versions, restore/rollback
+- Fundamental model change — touches metadata schema, storage layout, every endpoint
+- S3 compat: `?versionId=` on GET/HEAD/DELETE, version listing
+- Pairs with soft delete for full data recovery story
+
+### Encryption at Rest
+- AES-256 per-object encryption, stream wrapper + key management
+- Per-bucket or global encryption toggle
+- S3 SSE-compatible headers (`x-amz-server-side-encryption`)
+
 ### Bucket Policies (JSON)
 - S3-compatible policy engine
 - Complex rule evaluation
 - Policy management UI
 
-### Encryption at Rest
-- Stream wrapper + key management
-- Per-bucket or global encryption toggle
+### HTTPS / TLS
+- TLS termination via Kestrel with certs, or reverse proxy (Caddy/Traefik) documentation
+- Important for production deployments; presigned URLs are insecure over plain HTTP
+
+### HTTP/2 + Keepalive
+- Kestrel supports HTTP/2 natively, just needs config
+- Low effort, good for concurrent S3 client performance
+
+### OpenTelemetry Tracing
+- Distributed tracing to complement existing Serilog + Prometheus
+- Trace S3 requests end-to-end through middleware → service → storage
+
+### Backpressure Handling
+- Per-client throttling, upload queue limits
+- Builds on existing `UseRateLimiter`; prevents resource exhaustion under load
 
 ### Built-in Backup Scheduling
 - SQLite DB → remote S3 backup, configurable from UI
@@ -232,6 +271,40 @@
 
 ---
 
+## v4 — Distribution & Scale
+
+### Distribution / Sharding
+- Partition objects across nodes by consistent hash
+- The architectural leap from single-node to distributed storage
+- Requires cluster membership, routing layer, metadata coordination
+
+### Replication & Backup
+- Sync blobs to secondary nodes or external targets
+- Could start simple (rsync/rclone push) and evolve to real-time replication
+- Cross-region or cross-site redundancy
+
+### Erasure Coding
+- Reed-Solomon encoding across shards for fault tolerance without full replication
+- Higher storage efficiency than mirroring (e.g. 1.5x vs 3x overhead)
+- Requires multi-node; advanced data path
+
+### Node Rebalancing
+- Redistribute objects when nodes join or leave the cluster
+- Background migration with minimal impact on live traffic
+- Consistent hashing ring updates
+
+### Hot Object Caching / Cold Storage
+- In-memory or Redis cache for frequently accessed blobs
+- Tiered storage: hot (SSD/local) → warm (disk) → cold (archive/cloud)
+- Access pattern tracking to drive tier placement
+
+### FUSE Mount
+- Expose buckets as a local filesystem via FUSE
+- CSI driver for Kubernetes volume mounts
+- Niche but powerful for legacy app integration
+
+---
+
 ## Future Considerations
 
 - Unicode key normalization — macOS clients upload with NFD normalization, Linux with NFC; the same filename produces different SHA256 hashes and is stored as two separate objects. Fix: normalize all keys to NFC on ingest
@@ -241,7 +314,6 @@
 - Migration CLI — `objex migrate --from s3://old-minio-bucket` for adoption from existing S3 providers
 - Content-based search (Elasticsearch integration)
 - Image recognition / auto-tagging (ML)
-- Object versioning — fundamental model change, every endpoint affected
-- Replication and redundancy
 - CDN integration
 - Storage usage over time charts (requires historical data collection)
+- Rclone compatibility — S3 compat likely covers `rclone sync` out of the box; needs testing to confirm
