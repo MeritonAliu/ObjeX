@@ -6,8 +6,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.5" />
-    <PackageReference Include="Radzen.Blazor" Version="*" />
+    <PackageReference Include="Radzen.Blazor" Version="10.2.1" />
   </ItemGroup>
 
   <PropertyGroup>
