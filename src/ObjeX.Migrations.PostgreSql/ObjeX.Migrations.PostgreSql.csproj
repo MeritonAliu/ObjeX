@@ -15,6 +15,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.5" />
     <ProjectReference Include="..\ObjeX.Infrastructure\ObjeX.Infrastructure.csproj" />
   </ItemGroup>
 
