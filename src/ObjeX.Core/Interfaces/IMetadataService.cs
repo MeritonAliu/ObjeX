@@ -22,4 +22,8 @@ public interface IMetadataService
     Task<bool> ExistsObjectAsync(string bucketName, string key, CancellationToken ctk = default);
 
     Task UpdateBucketStatsAsync(string bucketName, CancellationToken ctk = default);
+
+    Task<IEnumerable<ContentTypeStats>> GetContentTypeStatsAsync(IEnumerable<string>? bucketNames = null, CancellationToken ctk = default);
 }
+
+public record ContentTypeStats(string ContentType, int Count, long TotalSize);

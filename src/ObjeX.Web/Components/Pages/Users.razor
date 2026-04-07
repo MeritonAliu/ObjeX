@@ -135,10 +135,17 @@
             .Select(g => new { OwnerId = g.Key, Total = g.Sum(b => b.TotalSize) })
             .ToDictionaryAsync(x => x.OwnerId, x => x.Total);
 
+        // Batch-load all user-role mappings in a single query to avoid N+1
+        var userRoles = await Db.UserRoles
+            .Join(Db.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => new { ur.UserId, RoleName = r.Name! })
+            .ToListAsync();
+        var rolesByUser = userRoles.GroupBy(x => x.UserId)
+            .ToDictionary(g => g.Key, g => g.Select(x => x.RoleName).ToList());
+
         var rows = new List<UserRow>();
         foreach (var u in users)
         {
-            var roles = await UserManager.GetRolesAsync(u);
+            var roles = rolesByUser.GetValueOrDefault(u.Id, []);
             var role = roles.Contains("Admin") ? "Admin" : roles.Contains("Manager") ? "Manager" : "User";
             var used = bucketSizes.GetValueOrDefault(u.Id, 0);
             var isPrivileged = role is "Admin" or "Manager";

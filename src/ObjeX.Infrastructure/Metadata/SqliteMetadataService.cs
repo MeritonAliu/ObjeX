@@ -147,9 +147,6 @@ public class SqliteMetadataService(ObjeXDbContext ctx) : IMetadataService
 
     public async Task UpdateBucketStatsAsync(string bucketName, CancellationToken ctk = default)
     {
-        var bucket = await GetBucketAsync(bucketName, null, ctk);
-        if (bucket is null) return;
-
         var stats = await ctx.BlobObjects
             .Where(o => o.BucketName == bucketName)
             .GroupBy(o => o.BucketName)
@@ -160,11 +157,26 @@ public class SqliteMetadataService(ObjeXDbContext ctx) : IMetadataService
             })
             .FirstOrDefaultAsync(ctk);
 
-        bucket.ObjectCount = stats?.Count ?? 0;
-        bucket.TotalSize = stats?.TotalSize ?? 0;
-        bucket.UpdatedAt = DateTime.UtcNow;
+        await ctx.Buckets
+            .Where(b => b.Name == bucketName)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(b => b.ObjectCount, stats != null ? stats.Count : 0)
+                .SetProperty(b => b.TotalSize, stats != null ? stats.TotalSize : 0)
+                .SetProperty(b => b.UpdatedAt, DateTime.UtcNow), ctk);
+    }
 
-        await ctx.SaveChangesAsync(ctk);
+    public async Task<IEnumerable<ContentTypeStats>> GetContentTypeStatsAsync(IEnumerable<string>? bucketNames = null, CancellationToken ctk = default)
+    {
+        var query = ctx.BlobObjects.Where(o => !o.Key.EndsWith("/"));
+        if (bucketNames is not null)
+        {
+            var names = bucketNames.ToList();
+            query = query.Where(o => names.Contains(o.BucketName));
+        }
+        return await query
+            .GroupBy(o => o.ContentType)
+            .Select(g => new ContentTypeStats(g.Key, g.Count(), g.Sum(o => o.Size)))
+            .ToListAsync(ctk);
     }
 
     static string FormatBytes(long bytes) => bytes switch

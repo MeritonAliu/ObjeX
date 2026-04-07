@@ -133,10 +133,10 @@ public static class S3ObjectEndpoint
                 if (await metadata.GetBucketAsync(bucket, IsPrivileged(ctx) ? null : GetCallerId(ctx)) is null)
                     return S3Xml.Error(S3Errors.NoSuchBucket, "The destination bucket does not exist.", 404);
 
-                var srcStream = await storage.RetrieveAsync(srcBucket, srcKey);
+                var srcStream = await storage.RetrieveAsync(srcBucket, srcKey, ctx.RequestAborted);
                 await using var copyHashStream = new HashingStream(srcStream);
-                var destPath = await storage.StoreAsync(bucket, key, copyHashStream);
-                var destSize = await storage.GetSizeAsync(bucket, key);
+                var destPath = await storage.StoreAsync(bucket, key, copyHashStream, ctx.RequestAborted);
+                var destSize = await storage.GetSizeAsync(bucket, key, ctx.RequestAborted);
                 var destEtag = copyHashStream.GetETag();
 
                 await metadata.SaveObjectAsync(new BlobObject
@@ -171,8 +171,8 @@ public static class S3ObjectEndpoint
             var customMetadata = ExtractCustomMetadata(request.Headers);
 
             await using var hashingStream = new HashingStream(request.Body);
-            var storagePath = await storage.StoreAsync(bucket, key, hashingStream);
-            var size = await storage.GetSizeAsync(bucket, key);
+            var storagePath = await storage.StoreAsync(bucket, key, hashingStream, ctx.RequestAborted);
+            var size = await storage.GetSizeAsync(bucket, key, ctx.RequestAborted);
             var etag = hashingStream.GetETag();
 
             // Post-check with actual size for chunked transfers (no Content-Length)
@@ -181,7 +181,7 @@ public static class S3ObjectEndpoint
                 var postQuotaError = await StorageQuota.CheckAsync(db, GetCallerId(ctx), size);
                 if (postQuotaError is not null)
                 {
-                    await storage.DeleteAsync(bucket, key);
+                    await storage.DeleteAsync(bucket, key, ctx.RequestAborted);
                     return postQuotaError;
                 }
             }
@@ -227,7 +227,7 @@ public static class S3ObjectEndpoint
 
             SetCustomMetadataHeaders(ctx.Response, obj.CustomMetadata);
 
-            Stream stream = await storage.RetrieveAsync(bucket, key);
+            Stream stream = await storage.RetrieveAsync(bucket, key, ctx.RequestAborted);
 
             // Opt-in integrity verification: re-hash the blob and compare against stored ETag.
             // Buffers the entire file in memory — only use when integrity matters more than speed.
@@ -316,10 +316,10 @@ public static class S3ObjectEndpoint
             }
 
             // S3 spec: DELETE returns 204 even if object does not exist
-            if (await metadata.ExistsObjectAsync(bucket, key))
+            if (await metadata.ExistsObjectAsync(bucket, key, ctx.RequestAborted))
             {
-                await storage.DeleteAsync(bucket, key);
-                await metadata.DeleteObjectAsync(bucket, key, GetCallerId(ctx));
+                await storage.DeleteAsync(bucket, key, ctx.RequestAborted);
+                await metadata.DeleteObjectAsync(bucket, key, GetCallerId(ctx), ctx.RequestAborted);
             }
             return Results.StatusCode(204);
         });

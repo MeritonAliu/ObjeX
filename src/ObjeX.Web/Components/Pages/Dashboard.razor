@@ -223,17 +223,16 @@
         _topBySize  = _buckets.Take(5).ToList();
         _topByCount = _buckets.OrderByDescending(b => b.ObjectCount).Take(5).ToList();
 
-        var ownedBucketNames = _buckets.Select(b => b.Name).ToHashSet();
-        var allObjects = (await MetadataService.ListAllObjectsAsync())
-            .Where(o => ownedBucketNames.Contains(o.BucketName) && !o.Key.EndsWith("/"))
-            .ToList();
+        var ownedBucketNames = _buckets.Select(b => b.Name).ToList();
+        var contentTypeStats = (await MetadataService.GetContentTypeStatsAsync(ownedBucketNames)).ToList();
 
-        _fileTypeStats = allObjects
-            .GroupBy(o => {
-                var ext = System.IO.Path.GetExtension(o.Key).ToLowerInvariant();
-                return string.IsNullOrEmpty(ext) ? "other" : ext;
+        _fileTypeStats = contentTypeStats
+            .GroupBy(s => {
+                // ContentType is like "image/png" — derive extension-like label
+                var slash = s.ContentType.LastIndexOf('/');
+                return slash >= 0 ? "." + s.ContentType[(slash + 1)..] : s.ContentType;
             })
-            .Select(g => new FileTypeStat(g.Key, g.Count()))
+            .Select(g => new FileTypeStat(g.Key, g.Sum(s => s.Count)))
             .OrderByDescending(x => x.Count)
             .Take(8)
             .ToList();
