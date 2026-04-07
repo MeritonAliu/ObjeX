@@ -19,8 +19,18 @@ updates:
       serilog:
         patterns:
           - "Serilog.*"
+      microsoft:
+        patterns:
+          - "Microsoft.*"
+      xunit:
+        patterns:
+          - "xunit*"
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
+    groups:
+      github-actions:
+        patterns:
+          - "*"
