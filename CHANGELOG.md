@@ -8,10 +8,17 @@ All notable changes to ObjeX are documented here.
 
 ### Added
 - PostgreSQL as opt-in database backend (`DATABASE_PROVIDER=postgresql`)
+- Separate PostgreSQL migration assembly (`ObjeX.Migrations.PostgreSql`)
+- Hangfire on PostgreSQL via `Hangfire.PostgreSql`
+- `docker-compose.postgres.yml` with Postgres service + health check
 - Audit log — records bucket/object operations with user, action, timestamp; Admin-only UI at `/audit`
 - Prometheus `/metrics` endpoint with per-bucket storage gauges
 - Helm chart for Kubernetes deployment
 - Storage quota enforcement (per-user and global default)
+- Image and PDF inline previews — eye button opens dialog; supports image, video, audio, PDF, text
+- Bulk select — checkbox column, bulk delete + ZIP download, action bar
+- File metadata viewer — info button opens dialog with key, content-type, size, ETag, uploaded, last modified
+- Storage analytics charts — per-bucket breakdown: storage donut, objects column, file types donut
 - ETag integrity verification on read — opt-in `x-objex-verify-integrity: true` header re-hashes blob before streaming
 - Automated test suite — 113 xUnit tests (unit + integration), CI runs tests on every push and PR
 
@@ -26,6 +33,10 @@ All notable changes to ObjeX are documented here.
 ### Added
 - S3 POST Object (presigned POST via form-field auth)
 - S3 DeleteObjects batch delete (`POST /{bucket}?delete`)
+- `x-amz-meta-*` custom metadata — stored as JSON on BlobObject, returned on GET/HEAD, captured on PUT/POST Object
+- CopyObject — `PUT /{bucket}/{*key}` with `x-amz-copy-source` header; copies blob + metadata server-side
+- ListMultipartUploads — `GET /{bucket}?uploads` lists active multipart uploads
+- Stub 501 responses for unsupported bucket operations (versioning, lifecycle, policy, cors, encryption, tagging, acl)
 - Startup seeding of buckets and S3 credentials via config/env vars
 - User management UI — Admin/Manager roles, create/deactivate/delete users, forced password change
 - Bucket ownership — users see only their own buckets; Admin/Manager see all

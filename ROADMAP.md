@@ -61,7 +61,7 @@
 - [x] `GET /api/presign/{bucket}/{*key}?expires=N` endpoint (cookie auth, port 9001)
 - [x] Copy-link button in Blazor UI — opens duration picker dialog, copies URL to clipboard
 - [x] Duration picker: quick-select chips + custom number/unit input, live expiry preview
-- [x] Default and max expiry configurable via `S3:PresignedUrlDefaultExpirySeconds` / `S3:PresignedUrlMaxExpirySeconds`
+- [x] Default and max expiry stored in `SystemSettings` DB table (Id=1); configurable via Settings UI — not via appsettings/env vars
 
 ### Blazor UI
 - Radzen Blazor component library, Inter font (self-hosted), teal brand theme via CSS variable overrides

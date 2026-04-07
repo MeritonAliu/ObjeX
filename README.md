@@ -90,6 +90,7 @@ Used by the Blazor UI. Bucket/object CRUD is handled entirely through the S3 API
 | `POST` | `/account/login` | Form login (sets cookie), redirects to `returnUrl` |
 | `GET` | `/account/logout` | Clears cookie, redirects to `/login` |
 | `GET` | `/health` | Liveness check (200 if process is up) |
+| `GET` | `/health/live` | Liveness check (alias for `/health`) |
 | `GET` | `/health/ready` | Readiness check (DB connectivity + blob storage writability) |
 | `GET` | `/metrics` | Prometheus metrics (HTTP stats + per-bucket storage gauges); requires `Metrics:Enabled=true` |
 
@@ -115,6 +116,9 @@ Exposed on a dedicated port for drop-in compatibility with S3 clients (`aws-cli`
 | `DELETE` | `/{bucket}/{*key}?uploadId=X` | Abort multipart upload |
 | `POST` | `/{bucket}/{*key}?uploads` | Initiate multipart upload |
 | `POST` | `/{bucket}/{*key}?uploadId=X` | Complete multipart upload |
+| `POST` | `/{bucket}` | S3 POST Object (presigned POST via form-field auth) |
+| `POST` | `/` | S3 POST Object (bucket endpoint mode; bucket from form field) |
+| `GET` | `/{bucket}?versioning\|lifecycle\|policy\|cors\|encryption\|tagging\|acl` | 501 Not Implemented (stub) |
 
 Configure `S3:PublicUrl` in `appsettings.json` (default `http://localhost:9000`) — used by presigned URL generation and the Blazor UI.
 

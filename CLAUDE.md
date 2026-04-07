@@ -9,15 +9,22 @@ Self-hosted blob storage built with Clean Architecture in .NET 10.
 ```
 src/
 ├── ObjeX.Api/           # ASP.NET Core host — Program.cs, Endpoints/, Middleware/, Auth/
+│   ├── Endpoints/       # AccountEndpoints, DownloadEndpoints, PresignEndpoints
+│   │   └── S3Endpoints/ # S3BucketEndpoint, S3ObjectEndpoint, S3MultipartEndpoint, S3PostObjectEndpoint
+│   ├── Middleware/      # SigV4AuthMiddleware
+│   ├── Auth/            # HangfireAuthorizationFilter
+│   ├── S3/              # SigV4Parser, SigV4Signer, S3Xml, S3Errors, StorageQuota
+│   └── Metrics/         # ObjeXMetrics, BucketMetricsSyncJob
 ├── ObjeX.Core/          # Domain — zero framework dependencies
 │   ├── Interfaces/      # IMetadataService, IObjectStorageService, IHashService, IHasTimestamps
-│   ├── Models/          # Bucket, BlobObject, S3Credential, User, AuditEntry, ListObjectsResult
-│   ├── Utilities/       # HashingStream (MD5 passthrough for ETag computation during upload)
+│   ├── Models/          # Bucket, BlobObject, S3Credential, User, AuditEntry, ListObjectsResult, MultipartUpload, MultipartUploadPart, SystemSettings
+│   ├── Utilities/       # HashingStream (MD5 passthrough for ETag computation during upload), PresignedUrlGenerator
 │   └── Validation/      # BucketNameValidator (GetValidationError)
 ├── ObjeX.Infrastructure/
 │   ├── Data/            # ObjeXDbContext (EF Core + SQLite, extends IdentityDbContext<User>)
 │   ├── Hashing/         # Sha256HashService
-│   ├── Jobs/            # CleanupOrphanedBlobsJob, VerifyBlobIntegrityJob (Hangfire job classes)
+│   ├── Health/          # BlobStorageHealthCheck
+│   ├── Jobs/            # CleanupOrphanedBlobsJob, VerifyBlobIntegrityJob, CleanupAbandonedMultipartJob (Hangfire job classes)
 │   ├── Metadata/        # SqliteMetadataService
 │   ├── Migrations/      # EF Core migrations
 │   └── Storage/         # FileSystemStorageService
@@ -26,9 +33,10 @@ src/
 │   ├── Unit/            # BucketNameValidator, ObjectKeyValidator, HashingStream, Sha256HashService
 │   └── Integration/     # S3 API round-trips, auth, multipart, quotas, resilience, cookie auth, health
 └── ObjeX.Web/           # Blazor Server UI — components, pages, dialogs
+    ├── Helpers/         # FileHelper
     └── Components/
-        ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound, Users, ChangePassword, AuditLog
-        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateS3CredentialDialog, ShowS3CredentialDialog, CreateFolderDialog, CreateUserDialog, ShowUserPasswordDialog, ChangeOwnerDialog
+        ├── Pages/       # Dashboard, Buckets, Objects, Settings, Login, NotFound, Users, ChangePassword, AuditLog, Error, Profile
+        ├── Dialogs/     # CreateBucketDialog, UploadObjectDialog, CreateS3CredentialDialog, ShowS3CredentialDialog, CreateFolderDialog, CreateUserDialog, ShowUserPasswordDialog, ChangeOwnerDialog, FilePreviewDialog, FileMetadataDialog, PresignedUrlDialog
         └── Layout/      # MainLayout, NavMenu, EmptyLayout
 ```
 
@@ -60,13 +68,15 @@ The cookie is the default for the browser. S3 clients on port 9000 authenticate 
 ### Middleware Pipeline Order
 
 ```
+UseWhen(!api)              ← UseStatusCodePagesWithRedirects("/not-found") — only non-API paths
 UseStaticFiles
-UseCors
+UseWhen(port == 9000)      ← UseCors("S3") — permissive CORS for S3 clients only; port 9001 has no CORS (same-origin)
 UseRateLimiter
 app.Use(...)               ← security headers (X-Content-Type-Options, X-Frame-Options, etc.)
 UseAuthentication          ← runs Identity cookie handler, sets context.User for cookie sessions
 UseWhen(port == 9000)      ← SigV4AuthMiddleware: validates Sig V4, sets context.User for S3 clients
 UseAuthorization           ← enforces policies on the already-resolved context.User
+UseAntiforgery
 ```
 
 ### HTTP Security Headers
@@ -93,16 +103,11 @@ By default, cookie auth challenges redirect to the login page (302). For API end
 
 1. **`ConfigureApplicationCookie`** in `Program.cs` overrides `OnRedirectToLogin` and `OnRedirectToAccessDenied`: if `Request.Path.StartsWithSegments("/api")`, sets `StatusCode = 401` and returns without redirecting.
 
-2. **`UseStatusCodePagesWithReExecute`** is wrapped in `app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), ...)` so it only intercepts non-API responses. Without this, the 401 would be caught by the status code middleware and re-executed to `/not-found`, which then redirects to login.
+2. **`UseStatusCodePagesWithRedirects`** is wrapped in `app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"), ...)` so it only intercepts non-API responses. Without this, the 401 would be caught by the status code middleware and redirected to `/not-found`, which then redirects to login.
 
-### Authorization Policy
+### Authorization
 
-```csharp
-// ApiPolicy — used by all API endpoints
-options.AddPolicy("ApiPolicy", policy => policy.RequireAuthenticatedUser());
-```
-
-No `AddAuthenticationSchemes` on the policy — both auth mechanisms set `context.User` before `UseAuthorization` runs, so the policy just checks `IsAuthenticated`. Adding scheme names to the policy would cause a 500 because `"ApiKey"` has no registered ASP.NET auth handler (it's handled by our custom middleware, not the auth pipeline).
+No named policies are defined. S3 endpoints use `.RequireAuthorization()` on the route group (default policy = require authenticated user). Both auth mechanisms set `context.User` before `UseAuthorization` runs, so the default policy just checks `IsAuthenticated`.
 
 ### ASP.NET Core Identity Setup
 
@@ -193,9 +198,11 @@ builder.Services.AddSingleton<IObjectStorageService>(sp => sp.GetRequiredService
 |---|---|---|---|---|
 | `CleanupOrphanedBlobsJob` | `Infrastructure/Jobs/` | Weekly Sun 03:00 UTC | `Task<CleanupResult>` | Queries all known `StoragePath` values from metadata, scans `*.blob` files on disk, deletes any not in the known set |
 | `VerifyBlobIntegrityJob` | `Infrastructure/Jobs/` | Weekly Sun 04:00 UTC | `Task<IntegrityResult>` | Reads every blob file, recomputes MD5, compares against stored ETag — logs errors for corrupted or missing blobs |
+| `CleanupAbandonedMultipartJob` | `Infrastructure/Jobs/` | Weekly Sun 05:00 UTC | `Task<AbandonedMultipartResult>` | Deletes multipart uploads older than 7 days (DB rows + part files on disk), also removes orphaned `_multipart` directories |
 
 `CleanupResult` (record, defined in same file): `FilesChecked`, `FilesDeleted`, `DurationSeconds`, `Timestamp`.
-`IntegrityResult` (record, defined in same file): `Checked`, `Corrupted`, `Missing`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
+`IntegrityResult` (record, defined in same file): `Checked`, `Corrupted`, `Missing`, `DurationSeconds`, `Timestamp`.
+`AbandonedMultipartResult` (record, defined in same file): `UploadsChecked`, `UploadsDeleted`, `DurationSeconds`, `Timestamp`. Returning a value from the job method makes the result visible in the Hangfire dashboard job history.
 
 `FileSystemStorageService.BasePath` is `internal` — accessible to jobs in the same `ObjeX.Infrastructure` assembly, not visible outside.
 
@@ -289,12 +296,10 @@ Empty or unset values are no-ops. Invalid bucket names are logged and skipped. S
 
 ## Storage Paths
 
-`Program.cs` contains fallback path logic (walks up to solution root) but it is overridden by `appsettings.json` in practice:
+- **Database**: `./data/db/objex.db` (relative to working directory, set in `ConnectionStrings:DefaultConnection`; hardcoded default when absent from config)
+- **Blob storage**: `./data/blobs` (relative to working directory, set in `Storage:BasePath`; hardcoded default when absent from config)
 
-- **Database**: `./data/db/objex.db` (relative to working directory, set in `ConnectionStrings:DefaultConnection`)
-- **Blob storage**: `./data/blobs` (relative to working directory, set in `Storage:BasePath`)
-
-The fallback logic in `Program.cs` only activates when `ConnectionStrings:DefaultConnection` is absent from config — don't rely on it. Always configure explicit paths in appsettings for deployed instances.
+Both paths are resolved to absolute paths at startup via `Path.GetFullPath()`. Always configure explicit paths in appsettings for deployed instances.
 
 ### Content-Addressable Blob Layout
 
@@ -527,4 +532,4 @@ When adding a new model or changing an existing one, generate a migration for **
 9. ~~**Bucket Permissions**~~ ✅ (ownership) — buckets owned by creator; Admin/Manager see all; User sees own only; enforced at API, S3, and Blazor layers. Full ACL (per-bucket read/write/delete grants) still pending.
 10. **Teams/Orgs** — multi-tenant, org workspaces, team roles, storage quotas
 11. **Storage backends** — swap `FileSystemStorageService` for cloud or chunked storage
-12. **PostgreSQL support** — swap SQLite via same `IMetadataService` interface
+12. ~~**PostgreSQL support**~~ ✅ — opt-in via `Database:Provider=postgresql`, separate migration assembly, Hangfire on PostgreSQL
