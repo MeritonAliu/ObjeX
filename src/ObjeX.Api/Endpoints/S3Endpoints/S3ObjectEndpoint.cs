@@ -34,7 +34,8 @@ public static class S3ObjectEndpoint
         var meta = JsonSerializer.Deserialize<Dictionary<string, string>>(customMetadata);
         if (meta is null) return;
         foreach (var (key, value) in meta)
-            response.Headers[key] = value;
+            if (key.StartsWith("x-amz-meta-", StringComparison.OrdinalIgnoreCase))
+                response.Headers[key] = value;
     }
     public static void MapS3ObjectEndpoints(this WebApplication app, RouteGroupBuilder s3)
     {
