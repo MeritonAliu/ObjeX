@@ -587,7 +587,9 @@ namespace ObjeX.Migrations.PostgreSql.Migrations
                         .HasColumnName("storage_quota_bytes");
 
                     b.Property<long>("StorageUsedBytes")
+                        .ValueGeneratedOnAdd()
                         .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
                         .HasColumnName("storage_used_bytes");
 
                     b.Property<DateTime?>("TemporaryPasswordExpiresAt")
