@@ -6,6 +6,7 @@ All notable changes to ObjeX are documented here.
 
 ## Next release
 - ZIP download streams directly to response instead of buffering entire archive in memory
+- Upload dialog passes file streams directly to storage instead of buffering into byte arrays
 
 ---
 

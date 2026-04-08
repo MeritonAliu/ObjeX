@@ -15,7 +15,7 @@
                    style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%" />
     </div>
 
-    @if (_files.Count > 0 && !_reading)
+    @if (_files.Count > 0)
     {
         <RadzenStack Gap="0.5rem">
             @foreach (var f in _files)
@@ -35,35 +35,22 @@
                       ButtonStyle="ButtonStyle.Light" Icon="refresh" Click="@(() => _files = [])" />
     }
 
-    @if (_reading)
-    {
-        <RadzenStack AlignItems="AlignItems.Center" Gap="0.5rem" Style="padding:1rem">
-            <RadzenProgressBar Value="@_readProgress" Max="100" ShowValue="false"
-                               Style="height:4px;width:100%" />
-            <RadzenText TextStyle="TextStyle.Caption">Reading @_readCurrent of @_files.Count: @_readFileName</RadzenText>
-        </RadzenStack>
-    }
-
     <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
         <RadzenButton Text="Cancel" ButtonStyle="ButtonStyle.Light" Click="@(() => DialogService.Close(null))" />
         <RadzenButton Text="@($"Upload {(_files.Count > 0 ? $"({_files.Count} {(_files.Count == 1 ? "file" : "files")})" : "")}")"
                       ButtonStyle="ButtonStyle.Primary" Click="@OnUpload"
-                      Disabled="@(_files.Count == 0 || _reading)" />
+                      Disabled="@(_files.Count == 0)" />
     </RadzenStack>
 </RadzenStack>
 
 @code {
-    public record UploadFile(string Name, string ContentType, long Size, byte[] Data);
+    public record UploadFile(string Name, string ContentType, long Size, IBrowserFile BrowserFile);
 
     ElementReference _dropZoneRef;
     InputFile? _inputFileRef;
     IJSObjectReference? _module;
 
     List<IBrowserFile> _files = [];
-    bool _reading;
-    double _readProgress;
-    int _readCurrent;
-    string _readFileName = "";
 
     const long MaxFileSize = 500L * 1024 * 1024;
     const int MaxFiles = 10;
@@ -89,27 +76,9 @@
         _files = e.GetMultipleFiles(MaxFiles).ToList();
     }
 
-    async Task OnUpload()
+    void OnUpload()
     {
-        _reading = true;
-        _readProgress = 0;
-        StateHasChanged();
-
-        var result = new List<UploadFile>();
-        for (var i = 0; i < _files.Count; i++)
-        {
-            var f = _files[i];
-            _readCurrent = i + 1;
-            _readFileName = f.Name;
-            _readProgress = (double)i / _files.Count * 100;
-            StateHasChanged();
-
-            using var ms = new MemoryStream();
-            await using var stream = f.OpenReadStream(MaxFileSize);
-            await stream.CopyToAsync(ms);
-            result.Add(new UploadFile(f.Name, f.ContentType, f.Size, ms.ToArray()));
-        }
-
+        var result = _files.Select(f => new UploadFile(f.Name, f.ContentType, f.Size, f)).ToList();
         DialogService.Close(result);
     }
 }

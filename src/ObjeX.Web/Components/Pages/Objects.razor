@@ -273,7 +273,7 @@
         var result = await DialogService.OpenAsync<UploadObjectDialog>("Upload");
         if (result is not List<UploadObjectDialog.UploadFile> selectedFiles || selectedFiles.Count == 0) return;
 
-        var files = selectedFiles.Select(f => (f.Name, f.ContentType, f.Size, Stream: (Stream)new MemoryStream(f.Data))).ToList();
+        var files = selectedFiles.Select(f => (f.Name, f.ContentType, f.Size, Stream: (Stream)f.BrowserFile.OpenReadStream(MaxFileSize))).ToList();
         await UploadFiles(files);
     }
 
@@ -290,15 +290,9 @@
             return;
         }
 
-        var files = new List<(string Name, string ContentType, long Size, Stream Stream)>();
-        foreach (var bf in e.GetMultipleFiles(MaxDropFiles))
-        {
-            var ms = new MemoryStream();
-            await using var stream = bf.OpenReadStream(MaxFileSize);
-            await stream.CopyToAsync(ms);
-            ms.Position = 0;
-            files.Add((bf.Name, bf.ContentType ?? "application/octet-stream", bf.Size, ms));
-        }
+        var files = e.GetMultipleFiles(MaxDropFiles)
+            .Select(bf => (bf.Name, bf.ContentType ?? "application/octet-stream", bf.Size, Stream: (Stream)bf.OpenReadStream(MaxFileSize)))
+            .ToList();
 
         await UploadFiles(files);
     }
