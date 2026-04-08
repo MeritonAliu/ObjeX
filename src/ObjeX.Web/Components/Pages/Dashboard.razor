@@ -89,11 +89,19 @@
                         <RadzenText TextStyle="TextStyle.Caption" Style="color:var(--rz-text-secondary-color)">Top 5 by count</RadzenText>
                     </RadzenStack>
                     <RadzenChart Style="height:240px;overflow:visible">
-                        <RadzenColumnSeries Data="@_topByCount" CategoryProperty="Name" ValueProperty="ObjectCount"
-                                            TItem="Bucket" Title="Objects" />
-                        <RadzenCategoryAxis />
-                        <RadzenValueAxis />
-                        <RadzenLegend Visible="false" />
+                        <RadzenDonutSeries Data="@_topByCount" CategoryProperty="Name" ValueProperty="ObjectCount"
+                                           TItem="Bucket" InnerRadius="60">
+                            <TooltipTemplate Context="data">
+                                <div>
+                                    <div style="font-weight:600;margin-bottom:2px">@data.Name</div>
+                                    <div>@data.ObjectCount.ToString("N0") objects</div>
+                                    @if (_totalObjects > 0)
+                                    {
+                                        <div style="opacity:0.7;font-size:0.85em">@($"{(double)data.ObjectCount / _totalObjects * 100:F1}%")</div>
+                                    }
+                                </div>
+                            </TooltipTemplate>
+                        </RadzenDonutSeries>
                     </RadzenChart>
                 </RadzenStack>
             </RadzenCard>
@@ -227,11 +235,7 @@
         var contentTypeStats = (await MetadataService.GetContentTypeStatsAsync(ownedBucketNames)).ToList();
 
         _fileTypeStats = contentTypeStats
-            .GroupBy(s => {
-                // ContentType is like "image/png" — derive extension-like label
-                var slash = s.ContentType.LastIndexOf('/');
-                return slash >= 0 ? "." + s.ContentType[(slash + 1)..] : s.ContentType;
-            })
+            .GroupBy(s => MimeToExtension(s.ContentType))
             .Select(g => new FileTypeStat(g.Key, g.Sum(s => s.Count)))
             .OrderByDescending(x => x.Count)
             .Take(8)
@@ -241,5 +245,32 @@
         _lastUpdated = DateTime.Now;
     }
 
-public void Dispose() => _timer?.Dispose();
+    static string MimeToExtension(string contentType) => contentType switch
+    {
+        "application/pdf" => ".pdf",
+        "application/zip" => ".zip",
+        "application/gzip" => ".gz",
+        "application/json" => ".json",
+        "application/xml" => ".xml",
+        "application/octet-stream" => "binary",
+        "application/msword" => ".doc",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => ".docx",
+        "application/vnd.ms-excel" => ".xls",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" => ".xlsx",
+        "application/vnd.ms-powerpoint" => ".ppt",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => ".pptx",
+        "application/x-directory" => "folder",
+        "text/plain" => ".txt",
+        "text/html" => ".html",
+        "text/css" => ".css",
+        "text/csv" => ".csv",
+        "text/markdown" => ".md",
+        _ => contentType.Contains('/')
+            ? "." + contentType[(contentType.LastIndexOf('/') + 1)..]
+                .Replace("x-", "")
+                .Split('+', ';')[0]
+            : contentType
+    };
+
+    public void Dispose() => _timer?.Dispose();
 }
