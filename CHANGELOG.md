@@ -4,12 +4,6 @@ All notable changes to ObjeX are documented here.
 
 ---
 
-## Next release
-- ZIP download streams directly to response instead of buffering entire archive in memory
-- Upload dialog passes file streams directly to storage instead of buffering into byte arrays
-
----
-
 ## v1.1.0 — 2026-04-09
 
 ### Added
@@ -39,6 +33,8 @@ All notable changes to ObjeX are documented here.
 - Upload dialog drag-and-drop not working (missing JS interop wiring)
 
 ### Improved
+- ZIP download streams directly to response instead of buffering entire archive in memory
+- Upload dialog passes file streams directly to storage instead of buffering into byte arrays
 - Dashboard loads file type stats via server-side query instead of all objects into memory
 - Users page N+1 role query eliminated with batch loading
 - CancellationToken propagation in S3 upload, download, copy, and delete paths
