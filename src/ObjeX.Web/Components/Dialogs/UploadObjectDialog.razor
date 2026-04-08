@@ -1,14 +1,17 @@
 @inject DialogService DialogService
 @inject NotificationService NotificationService
+@inject IJSRuntime JS
 
 <RadzenStack Gap="1rem">
-    <div style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
+    <div @ref="_dropZoneRef"
+         style="position:relative; display:flex; flex-direction:column; align-items:center; justify-content:center;
                 border: 2px dashed var(--rz-primary); border-radius: var(--rz-border-radius);
                 padding: 2rem; gap:0.5rem; background: var(--rz-base-background-color);
+                min-height: 120px;
                 @(_files.Count > 0 ? "display:none" : "")">
         <span class="rzi rzi-upload" style="font-size:2rem; color:var(--rz-primary)"></span>
         <RadzenText TextStyle="TextStyle.Subtitle1">Drag &amp; drop file(s) here or click to browse</RadzenText>
-        <InputFile OnChange="OnFilesSelected" multiple
+        <InputFile @ref="_inputFileRef" OnChange="OnFilesSelected" multiple
                    style="position:absolute; inset:0; opacity:0; cursor:pointer; width:100%; height:100%" />
     </div>
 
@@ -52,6 +55,10 @@
 @code {
     public record UploadFile(string Name, string ContentType, long Size, byte[] Data);
 
+    ElementReference _dropZoneRef;
+    InputFile? _inputFileRef;
+    IJSObjectReference? _module;
+
     List<IBrowserFile> _files = [];
     bool _reading;
     double _readProgress;
@@ -60,6 +67,15 @@
 
     const long MaxFileSize = 500L * 1024 * 1024;
     const int MaxFiles = 10;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Dialogs/UploadObjectDialog.razor.js");
+            await _module.InvokeVoidAsync("initDropZone", _dropZoneRef, _inputFileRef!.Element);
+        }
+    }
 
     void OnFilesSelected(InputFileChangeEventArgs e)
     {
