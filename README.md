@@ -40,6 +40,8 @@ Open **http://localhost:9001** — log in with `admin` / `admin`.
 
 > ⚠️ Change the default admin credentials before exposing the instance publicly. Set `DefaultAdmin:Username`, `DefaultAdmin:Email`, and `DefaultAdmin:Password` in `appsettings.json` or environment variables.
 
+> **Bind mounts:** If using a bind mount instead of a named volume, mount to `/data` (e.g. `./my-data:/data`). The entrypoint automatically fixes ownership for bind mounts.
+
 ---
 <img width="800" height="496" alt="grafik" src="https://github.com/user-attachments/assets/8cadcd71-de33-4554-a5a0-320362b35e68" />
 
