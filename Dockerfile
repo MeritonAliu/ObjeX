@@ -23,8 +23,8 @@ RUN dotnet publish ObjeX.Api/ObjeX.Api.csproj \
 # Pin to 10.0 — intentional for .NET 10 preview/RC; update when GA lands
 FROM mcr.microsoft.com/dotnet/aspnet:10.0
 
-# Install curl (healthcheck) and gosu (entrypoint privilege drop), then clean up
-RUN apt-get update && apt-get install -y --no-install-recommends curl gosu \
+# Install curl for container healthcheck, then clean up
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -32,7 +32,7 @@ RUN mkdir -p /data/db /data/blobs && chown -R app:app /data
 COPY --from=build --chown=app:app /app/publish .
 
 # Entrypoint: fix bind mount ownership, then drop to non-root
-RUN printf '#!/bin/sh\nif [ "$(id -u)" = "0" ]; then\n  chown -R app:app /data 2>/dev/null || true\n  exec gosu app dotnet ObjeX.Api.dll "$@"\nelse\n  exec dotnet ObjeX.Api.dll "$@"\nfi\n' > /entrypoint.sh && chmod 755 /entrypoint.sh
+RUN printf '#!/bin/sh\nif [ "$(id -u)" = "0" ]; then\n  chown -R app:app /data 2>/dev/null || true\n  exec setpriv --reuid=app --regid=app --init-groups dotnet ObjeX.Api.dll "$@"\nelse\n  exec dotnet ObjeX.Api.dll "$@"\nfi\n' > /entrypoint.sh && chmod 755 /entrypoint.sh
 
 ENV ASPNETCORE_URLS=http://+:9001
 ENV ConnectionStrings__DefaultConnection="Data Source=/data/db/objex.db"

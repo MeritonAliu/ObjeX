@@ -7,7 +7,7 @@ All notable changes to ObjeX are documented here.
 ## Unreleased
 
 ### Fixed
-- Docker bind mount permissions: entrypoint now fixes `/data` ownership via gosu (named volumes unaffected)
+- Docker bind mount permissions: entrypoint now fixes `/data` ownership via setpriv (named volumes unaffected)
 - S3 PUT Object returned 201 instead of 200 (broke warp and some SDKs)
 - S3 `aws-chunked` transfer encoding not decoded, stored chunk framing as part of object data
 - Response compression applied to S3 port, causing size mismatches on download
