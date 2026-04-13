@@ -4,7 +4,7 @@ All notable changes to ObjeX are documented here.
 
 ---
 
-## Unreleased
+## v1.2.0 — 2026-04-14
 
 ### Fixed
 - Blazor UI not interactive in Docker (blazor.web.js 404) — added RequiresAspNetWebAssets + MapStaticAssets
