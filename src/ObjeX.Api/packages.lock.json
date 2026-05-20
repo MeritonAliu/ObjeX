@@ -46,9 +46,9 @@
       },
       "Microsoft.AspNetCore.App.Internal.Assets": {
         "type": "Direct",
-        "requested": "[10.0.3, )",
-        "resolved": "10.0.3",
-        "contentHash": "mr3Zn+ht8lijYvlMIasftw9opU9hsLKDdnOgQMmYI3RjWPJLOF9l8+YHDseRkTs97wOrULmJgo/NDCmzL/EGDg=="
+        "requested": "[10.0.8, )",
+        "resolved": "10.0.8",
+        "contentHash": "v6KocthydFtUHBIRI29YsOHKOgsqcQubkNywVOxiYr4GSDSv+XO/AeyMJywlX+1tGUTGdydu/X7V+Tzeq4SsoA=="
       },
       "Microsoft.EntityFrameworkCore.Design": {
         "type": "Direct",
@@ -325,8 +325,8 @@
       },
       "Radzen.Blazor": {
         "type": "Transitive",
-        "resolved": "10.3.0",
-        "contentHash": "SlAlmJWjlprgOUCWS2KW7UaEPg/A+N3lY1102mxkVbpAfisQ5DqVVxQmVxPN/nV1CR7tu4/NqTIi8EJLpZIHfQ=="
+        "resolved": "10.4.3",
+        "contentHash": "5FC56PcZPzGXu1KRMSChK5lEX4Scym2M9b/vRgWBU0TtfHgBzAsRwnfGbAHDQO+hfWGX6rKAj4gqeVfQpKaphg=="
       },
       "Serilog": {
         "type": "Transitive",
@@ -504,7 +504,7 @@
           "Microsoft.EntityFrameworkCore.Sqlite": "[10.0.8, )",
           "ObjeX.Core": "[1.0.0, )",
           "ObjeX.Infrastructure": "[1.0.0, )",
-          "Radzen.Blazor": "[10.3.0, )"
+          "Radzen.Blazor": "[10.4.3, )"
         }
       }
     }
