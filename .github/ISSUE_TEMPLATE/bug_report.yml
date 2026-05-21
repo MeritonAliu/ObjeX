@@ -1,0 +1,57 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug. Please do **not** report security vulnerabilities here — see [SECURITY.md](https://github.com/centrolabs/ObjeX/blob/main/SECURITY.md).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what actually happened?
+      placeholder: |
+        1. Uploaded an object via the AWS CLI
+        2. Expected a 200 with an ETag
+        3. Got a 500 instead
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Minimal steps, commands, or a code snippet that reproduces the issue.
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ObjeX version
+      description: Release tag or commit SHA (e.g. v1.2.0).
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database provider
+      options:
+        - SQLite
+        - PostgreSQL
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS / deployment
+      description: e.g. Ubuntu 24.04 Docker, macOS 14 dotnet run, Windows 11.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Relevant log output. This is automatically formatted as code.
+      render: shell
+    validations:
+      required: false

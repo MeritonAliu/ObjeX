@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an enhancement or new capability
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/centrolabs/ObjeX/blob/main/ROADMAP.md) and existing issues first — it may already be planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do that ObjeX can't do today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: What would you like ObjeX to do? An S3 feature? Reference the AWS S3 API if relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Workarounds you've tried or other approaches you weighed.
+    validations:
+      required: false
